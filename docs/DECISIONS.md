@@ -163,3 +163,34 @@ This document records architectural, technical, and implementation decisions mad
 * **Why:** Closes customer data leaks, stops cross-account contamination, ensures privacy compliance, and guarantees that newly registered customer accounts only ever see their own orders, proofs, and saved artwork.
 * **Alternatives Considered:**
   * *Client-side filtering with query params (`?userId=...`):* Insecure because any user could tamper with query params to view another customer's order history and invoices.
+
+---
+
+# Debugging programme decisions (Phases 0–10)
+
+## D-01: Supabase Auth and a server-side service layer
+Login uses Supabase Auth (httpOnly cookies via `@supabase/ssr`; Bearer access tokens for API clients). The server reads and writes with the service-role key and enforces ownership in code. Row-level security is on for every table, and only the active catalogue is publicly readable. **Why:** one place for authorisation that also works for the future mobile app's API calls; a leaked publishable key exposes nothing.
+
+## D-02: Proof approved before payment; PROOF stage only for revisions
+Customers approve the proof, then pay. Paid orders go QUOTE → ORDER (by Stripe) → ARTWORK (pre-press) → PRODUCTION. If artwork must change after payment, pre-press issues a revised proof (ARTWORK → PROOF), which withdraws the earlier approval until the customer approves again. **Why:** the PRD's journey ("approve a proof, then pay") and its pipeline both hold, and production is never unlocked without a matching approval.
+
+## D-03: Guest drafts owned by an httpOnly cookie
+Visitors can configure and proof without an account. Their drafts are bound to a random httpOnly cookie (only its hash is stored) and move to the account on sign-in or checkout. **Why:** no friction before purchase, without any id in the URL or body being trusted.
+
+## D-04: Stripe Checkout, confirmation only from Stripe
+Card and UPI details are entered on Stripe. Orders are marked paid only by a signature-verified webhook or a server-side session lookup. Both use the same idempotent compare-and-set. **Why:** PCI scope stays with Stripe; forged or replayed events cannot create paid orders.
+
+## D-05: INR and GST
+Prices are in paise. GST is per product (default 18%, HSN code stored), split CGST + SGST for Delhi (seller state 07) and IGST for other states, using the delivery address as the place of supply. Invoices are GST tax invoices; the Xero export uses INR with GST/IGST tax types.
+
+## D-06: Direct-to-storage uploads with server pre-flight
+The browser uploads artwork straight to a private bucket via a one-time signed URL (avoids the 4.5 MB serverless body limit). The server then checks the stored file by content: PDF/AI/EPS/PNG/SVG, PNG effective DPI against the print size, encrypted PDFs, and scripts or external links in SVG.
+
+## D-07: One geometry model for proof and print
+The designer stores its scale (`pxPerMm`). Proofs (SVG) and production files (PDF, 300 DPI PNG) are drawn from the same millimetre model with the same text-fitting algorithm (shrink-to-fit, tracking, min/max size), with an embedded Unicode font (DejaVu Sans) so any customer text prints.
+
+## D-08: Variable data
+For products with variable data, the CSV is attached to the job. Its rows must equal the quantity. Each row produces its own PDF, with `{{Column}}` tokens replaced and fitted; the PDFs are zipped. Rows whose text still cannot fit are flagged in the slug line for pre-press.
+
+## D-09: One-click reorder
+A reorder copies the paid order's artwork into a new job that already carries the approved proof and its fingerprint, and goes straight to checkout at current prices. If the catalogue no longer allows that configuration, the reorder is refused with the reason.
