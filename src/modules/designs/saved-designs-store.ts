@@ -1,8 +1,8 @@
+import { dataFile } from "../../lib/data-dir";
 import fs from "fs";
-import path from "path";
 import { SavedDesign } from "@/types/database";
 
-const DESIGNS_STORE_FILE = path.join(process.cwd(), ".saved-designs-store.json");
+const DESIGNS_STORE_FILE = dataFile(".saved-designs-store.json");
 
 interface DesignsStoreData {
   designs: Record<string, SavedDesign>;

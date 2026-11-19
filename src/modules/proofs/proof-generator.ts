@@ -89,6 +89,8 @@ export function processProofRevisionRequest(
 /**
  * Generates an SVG/Canvas Watermarked Visual Proof with Metadata (§ 08)
  */
+// TODO(Phase 5, bug B2): the artwork argument is ignored, so proofs never show the customer's design.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function generateWatermarkedProofSvg(meta: ProofMetadata, artworkSvgOrContent?: string): string {
   return `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">

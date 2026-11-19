@@ -1,13 +1,12 @@
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
 
+import { dataFile } from "../../../lib/data-dir";
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert";
 import fs from "fs";
-import path from "path";
 import {
   sendNotificationEmail,
   safeSendNotificationEmail,
-  generateIdempotencyKey,
 } from "../email-service";
 import {
   getCapturedEmails,
@@ -17,7 +16,6 @@ import {
 import {
   getEmailLogs,
   resetEmailStore,
-  hasSuccessfulSend,
   setUniqueConstraintDisabled,
 } from "../email-store";
 import {
@@ -74,7 +72,7 @@ describe("EMAIL NOTIFICATIONS (PRD § 13 & PHASE E2)", () => {
       assert.strictEqual(logs.length, 1);
       assert.strictEqual(logs[0].status, "sent");
       assert.strictEqual(logs[0].recipient, "sarah@enduroclub.uk");
-      assert.ok(logs[0].provider_message_id?.length! > 0);
+      assert.ok((logs[0].provider_message_id?.length ?? 0) > 0);
     });
 
     it("sends proof_ready with revision number and approval gate notice", async () => {
@@ -393,8 +391,8 @@ describe("EMAIL NOTIFICATIONS (PRD § 13 & PHASE E2)", () => {
       assert.strictEqual(emailResult.success, true);
 
       // 2. Simulate server restart: read fresh from persisted disk files
-      const orderFile = path.join(process.cwd(), ".orders-store.json");
-      const emailFile = path.join(process.cwd(), ".email-logs-store.json");
+      const orderFile = dataFile(".orders-store.json");
+      const emailFile = dataFile(".email-logs-store.json");
 
       assert.ok(fs.existsSync(orderFile), ".orders-store.json must exist");
       assert.ok(fs.existsSync(emailFile), ".email-logs-store.json must exist");

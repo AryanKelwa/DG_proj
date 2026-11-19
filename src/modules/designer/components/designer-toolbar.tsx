@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { CanvasElement, TextCanvasElement, ImageCanvasElement, ShapeCanvasElement } from "../types";
+import { CanvasElement, TextCanvasElement, ShapeCanvasElement } from "../types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,12 +13,8 @@ import {
   Trash2,
   Bold,
   Italic,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
   Eye,
   EyeOff,
-  Sparkles,
   Layers,
   Palette,
 } from "lucide-react";

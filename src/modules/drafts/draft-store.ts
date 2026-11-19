@@ -1,12 +1,12 @@
+import { dataFile } from "../../lib/data-dir";
 import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 import { JobDraft, DraftStatus, DraftAuditLogEntry, DraftProofRecord } from "@/types/draft";
 import { PRODUCTS } from "@/lib/data/mock-data";
 import { calculatePrintPrice, PricingBreakdown } from "@/modules/pricing/pricing-engine";
 import { generateWatermarkedProofSvg } from "@/modules/proofs/proof-generator";
 
-const DRAFT_STORE_FILE = path.join(process.cwd(), ".drafts-store.json");
+const DRAFT_STORE_FILE = dataFile(".drafts-store.json");
 
 // In-memory cache synced with disk
 let draftsMap: Map<string, JobDraft> = new Map();

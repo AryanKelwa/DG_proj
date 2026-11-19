@@ -1,5 +1,5 @@
+import { dataFile } from "../../lib/data-dir";
 import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 import { Profile, UserRole } from "@/types/database";
 
@@ -9,8 +9,7 @@ export interface StoredUser extends Profile {
   orderCount?: number;
 }
 
-const USERS_STORE_FILE = path.join(process.cwd(), ".users-store.json");
-const SESSION_SECRET = process.env.SESSION_SECRET || "w2p-secure-session-secret-2026";
+const USERS_STORE_FILE = dataFile(".users-store.json");
 
 export const INITIAL_USERS: Record<string, StoredUser> = {
   "admin@w2p.co.in": {

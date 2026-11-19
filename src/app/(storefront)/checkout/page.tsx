@@ -10,14 +10,12 @@ import { PricingBreakdown } from "@/modules/pricing/pricing-engine";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   CreditCard,
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
   Lock,
-  ArrowRight,
   Truck,
   Sparkles,
   Layers,
@@ -29,7 +27,7 @@ import {
 function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, role } = useAuth();
+  const { user } = useAuth();
 
   const draftId = searchParams.get("draft");
   const [draft, setDraft] = useState<JobDraft | null>(null);
@@ -521,7 +519,7 @@ function CheckoutContent() {
                     <span>Hosted Stripe Checkout</span>
                   </div>
                   <p className="text-muted-foreground leading-relaxed">
-                    You will be securely redirected to Stripe's hosted checkout to complete payment with Apple Pay, Google Pay, or Credit/Debit card. Your order will immediately return to your customer portal upon completion.
+                    You will be securely redirected to Stripe&apos;s hosted checkout to complete payment with Apple Pay, Google Pay, or Credit/Debit card. Your order will immediately return to your customer portal upon completion.
                   </p>
                 </div>
               )}

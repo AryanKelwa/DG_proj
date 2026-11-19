@@ -1,10 +1,11 @@
+import { dataFile } from "../../lib/data-dir";
 import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 
 // Ensure environment variables from .env.local are loaded if running in Node / scripts
 try {
   if (!process.env.RESEND_API_KEY) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional, server/script-only dependency
     const { loadEnvConfig } = require("@next/env");
     loadEnvConfig(process.cwd());
   }
@@ -25,7 +26,7 @@ export interface CapturedEmail {
   sentAt: string;
 }
 
-const CAPTURED_EMAILS_FILE = path.join(process.cwd(), ".email-captured-sink.json");
+const CAPTURED_EMAILS_FILE = dataFile(".email-captured-sink.json");
 
 let inMemoryCaptured: CapturedEmail[] = [];
 let simulatedFailure: { enabled: boolean; error: string } = {

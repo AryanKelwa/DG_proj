@@ -1,6 +1,4 @@
-import React from "react";
 import { VariableDataUploader } from "@/modules/variable-data/components/variable-data-uploader";
-import { Badge } from "@/components/ui/badge";
 
 export const metadata = {
   title: "Variable Data & CSV Merge Engine · W2P Print House",

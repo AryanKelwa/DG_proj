@@ -2,7 +2,7 @@
  * Test Environment Database and Storage Seed Utility
  * Resets state to known baseline before test execution:
  * - Customer A: Sarah Jenkins (past order W2P-2026-00101, saved design, active proof)
- * - Customer B: Alex Thorne (Customer B for isolation testing)
+ * - Customer B: customerb@example.com (isolation testing)
  * - Admin: Marcus Vance (Production Head)
  */
 
@@ -29,7 +29,7 @@ export interface TestSeedState {
 export function getInitialSeedState(): TestSeedState {
   return {
     customerA: {
-      id: "usr-cust-01",
+      id: "usr-cust-1",
       email: "sarah@enduroclub.uk",
       orders: [
         {
@@ -54,8 +54,8 @@ export function getInitialSeedState(): TestSeedState {
       ],
     },
     customerB: {
-      id: "usr-cust-02",
-      email: "alex@gravelhub.co.uk",
+      id: "usr-cust-2",
+      email: "customerb@example.com",
       orders: [
         {
           id: "ord-seed-02",

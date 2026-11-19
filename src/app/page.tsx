@@ -1,4 +1,3 @@
-import React from "react";
 import Link from "next/link";
 import { DIVISIONS, PRODUCTS } from "@/lib/data/mock-data";
 import { Button } from "@/components/ui/button";
@@ -6,14 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ArrowRight,
-  ShieldCheck,
   Zap,
   Sparkles,
   Sliders,
-  CheckCircle2,
   FileCheck2,
   Cpu,
-  Layers,
 } from "lucide-react";
 
 export default function HomePage() {

@@ -1,3 +1,4 @@
+import { execSync } from "child_process";
 import { test, expect } from "@playwright/test";
 import { TEST_USERS, loginViaUi, logoutViaUi } from "./support/auth-helpers";
 import fs from "fs";
@@ -190,39 +191,28 @@ test.describe("PHASE I: Customer Data Leak & Identity Hardening (PRD § 03, § 1
     const cwd = process.cwd();
     const matches: string[] = [];
 
-    function searchDir(dir: string) {
-      for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, item.name);
-        if (item.isDirectory()) {
-          if (["node_modules", ".next", ".git", "scratch", "playwright-report", "test-results"].includes(item.name)) continue;
-          searchDir(full);
-        } else {
-          const isTestOrSeed =
-            full.includes("__tests__") ||
-            full.includes("seed-data.ts") ||
-            full.includes("e2e") ||
-            full.endsWith(".test.ts") ||
-            full.endsWith(".spec.ts") ||
-            full.endsWith(".jsonl") ||
-            full.endsWith(".log") ||
-            full.endsWith(".json");
+    // Only scan files tracked by git: build artefacts and local data stores are not part of the repository.
+    const trackedFiles = execSync("git ls-files", { cwd, encoding: "utf8" }).split("\n").filter(Boolean);
+    for (const rel of trackedFiles) {
+      const full = path.join(cwd, rel);
+      const isTestOrSeed =
+        full.includes("__tests__") ||
+        full.includes("seed-data.ts") ||
+        full.includes("e2e") ||
+        full.endsWith(".test.ts") ||
+        full.endsWith(".spec.ts") ||
+        full.endsWith(".jsonl") ||
+        full.endsWith(".log") ||
+        full.endsWith(".json");
+      if (isTestOrSeed || !fs.existsSync(full)) continue;
 
-          if (isTestOrSeed) continue;
-
-          try {
-            const content = fs.readFileSync(full, "utf8");
-            const lines = content.split("\n");
-            lines.forEach((line, idx) => {
-              if (line.includes("Sarah") || line.includes("7911")) {
-                matches.push(`${full}:${idx + 1}: ${line.trim()}`);
-              }
-            });
-          } catch (e) {}
+      const lines = fs.readFileSync(full, "utf8").split("\n");
+      lines.forEach((line, idx) => {
+        if (line.includes("Sarah") || line.includes("7911")) {
+          matches.push(`${full}:${idx + 1}: ${line.trim()}`);
         }
-      }
+      });
     }
-
-    searchDir(cwd);
     expect(matches, `Found unauthorized Sarah/7911 occurrences: ${JSON.stringify(matches)}`).toEqual([]);
   });
 

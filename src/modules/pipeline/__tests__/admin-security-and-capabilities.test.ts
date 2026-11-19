@@ -9,10 +9,8 @@ import {
   verifySignedDownloadToken,
   getAdminReportsData,
   getArchivedOrders,
-  resetOrderStore,
 } from "@/modules/orders/order-store";
 import {
-  getAllUsers,
   getUserById,
   validateCredentials,
   createSessionToken,
@@ -20,18 +18,13 @@ import {
   updateUserRole,
   updateUserStatus,
   registerCustomerUser,
-  resetUsersStore,
 } from "@/modules/auth/users-store";
 import {
-  getAllProducts,
   getProductBySlug,
   updateProduct,
-  createProduct,
-  resetCatalogStore,
 } from "@/modules/catalog/catalog-store";
 import { logAdminAction, getAuditLogs, resetAuditStore } from "@/modules/audit/audit-store";
 import { seedPhaseHDatabase, PHASE_H_ORDERS } from "@/modules/seed/seed-data";
-import { Order, PipelineStage } from "@/types/database";
 
 describe("PHASE H: Admin Capabilities & Security Tests (PRD § 03, § 11, § 13, § 14, § 15)", () => {
   beforeEach(() => {

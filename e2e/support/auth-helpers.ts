@@ -9,11 +9,11 @@ export const TEST_USERS = {
     company: "Grizedale Enduro Racing",
   },
   customerB: {
-    email: "alex@gravelhub.co.uk",
+    email: "customerb@example.com",
     password: "customer123",
-    name: "Alex Thorne",
+    name: "Customer B",
     role: "customer",
-    company: "Gravel Hub UK",
+    company: "Apex Biking Co",
   },
   admin: {
     email: "admin@w2p.co.in",
@@ -54,6 +54,7 @@ export async function logoutViaUi(page: Page) {
   const signOutButton = page.locator('button:has-text("Sign Out")').first();
   if (await signOutButton.isVisible()) {
     await signOutButton.click();
-    await page.waitForURL("**/login", { timeout: 10000 });
+    // Logout may land on /login?redirect=..., so match the path with or without a query string.
+    await page.waitForURL(/\/login(\?|$)/, { timeout: 10000 });
   }
 }

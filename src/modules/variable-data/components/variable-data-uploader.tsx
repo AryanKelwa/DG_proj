@@ -10,11 +10,7 @@ import {
   FileSpreadsheet,
   UploadCloud,
   CheckCircle2,
-  Sparkles,
   Download,
-  Layers,
-  ArrowRight,
-  Database,
 } from "lucide-react";
 
 const SAMPLE_CSV = `BibNumber,AthleteName,Category,EmergencyContact

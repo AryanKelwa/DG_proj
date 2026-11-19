@@ -1,5 +1,5 @@
+import { dataFile } from "../../lib/data-dir";
 import fs from "fs";
-import path from "path";
 
 export interface AdminAuditEntry {
   id: string;
@@ -18,7 +18,7 @@ export interface AdminAuditEntry {
   created_at: string;
 }
 
-const AUDIT_STORE_FILE = path.join(process.cwd(), ".audit-store.json");
+const AUDIT_STORE_FILE = dataFile(".audit-store.json");
 
 interface AuditStoreData {
   logs: AdminAuditEntry[];

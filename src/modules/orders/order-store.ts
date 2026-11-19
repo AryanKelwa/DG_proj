@@ -1,11 +1,11 @@
+import { dataFile } from "../../lib/data-dir";
 import fs from "fs";
-import path from "path";
 import crypto from "crypto";
-import { Order, PipelineStage, PaymentStatus, ProofStatus } from "@/types/database";
+import { Order, PipelineStage } from "@/types/database";
 import { INITIAL_ORDERS } from "@/lib/data/mock-data";
 import { safeSendNotificationEmail } from "@/modules/email/email-service";
 
-const ORDERS_STORE_FILE = path.join(process.cwd(), ".orders-store.json");
+const ORDERS_STORE_FILE = dataFile(".orders-store.json");
 const SIGNED_URL_SECRET = process.env.SIGNED_URL_SECRET || "w2p-signed-production-secret-2026";
 
 export interface StatusHistoryEntry {
@@ -329,6 +329,7 @@ export function searchAdminOrders(options: {
   const paginated = list.slice(offset, offset + limit).map((o) => {
     const gate = checkReadyForProduction(o);
     // Sanitize: do not leak raw payment secrets or private hashes
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- intentionally omitted from list responses
     const { xero_invoice_data, ...rest } = o as any;
     return {
       ...rest,
@@ -570,7 +571,7 @@ export function getAdminReportsData(dateFrom?: string, dateTo?: string) {
   }
 
   let confirmedRevenueCents = 0;
-  let totalOrders = orders.length;
+  const totalOrders = orders.length;
   let paidCount = 0;
   let pendingCount = 0;
   let cancelledCount = 0;

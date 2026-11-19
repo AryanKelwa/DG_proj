@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySessionToken, StoredUser, getUserById } from "@/modules/auth/users-store";
+import { verifySessionToken, StoredUser } from "@/modules/auth/users-store";
 
 export function getSessionTokenFromRequest(req: NextRequest): string | null {
   // 1. Check HTTP-only cookie

@@ -1,13 +1,16 @@
+import { dataFile } from "../../lib/data-dir";
 import fs from "fs";
-import path from "path";
 import { Order, Proof, SavedDesign } from "@/types/database";
 import { resetUsersStore, StoredUser } from "@/modules/auth/users-store";
 import { resetCatalogStore } from "@/modules/catalog/catalog-store";
 import { resetAuditStore } from "@/modules/audit/audit-store";
 import { resetProofsStore } from "@/modules/proofs/proofs-store";
 import { resetSavedDesignsStore } from "@/modules/designs/saved-designs-store";
+import { resetDraftsStore } from "@/modules/drafts/draft-store";
+import { resetEmailStore } from "@/modules/email/email-store";
+import { clearCapturedEmails } from "@/modules/email/email-provider";
 
-const ORDERS_STORE_FILE = path.join(process.cwd(), ".orders-store.json");
+const ORDERS_STORE_FILE = dataFile(".orders-store.json");
 
 export const SEED_CUSTOMERS = [
   {
@@ -377,6 +380,9 @@ export function seedPhaseHDatabase(): void {
   resetAuditStore();
   resetProofsStore(SEED_PROOFS);
   resetSavedDesignsStore(SEED_DESIGNS);
+  resetDraftsStore();
+  resetEmailStore();
+  clearCapturedEmails();
 
   const storeData = {
     orders: { ...PHASE_H_ORDERS },

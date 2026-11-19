@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { calculatePrintPrice, PricingCalculationInput } from "@/modules/pricing/pricing-engine";
+import { calculatePrintPrice } from "@/modules/pricing/pricing-engine";
 import { PRODUCTS } from "@/lib/data/mock-data";
 import { z } from "zod";
 

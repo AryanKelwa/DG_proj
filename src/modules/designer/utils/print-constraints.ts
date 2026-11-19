@@ -1,4 +1,4 @@
-import { PrintDimensions, PrintBoundsInPixels, TextCanvasElement } from "../types";
+import { PrintDimensions, PrintBoundsInPixels } from "../types";
 
 /**
  * Calculates pixel dimensions for Bleed, Trim, and Safety margins

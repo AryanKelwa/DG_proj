@@ -30,7 +30,10 @@
 *.tsbuildinfo
 next-env.d.ts
 
-# Test outputs & local stores
-.drafts-store.json
+# Interim JSON data stores (never committed; replaced by Supabase in Phase 1)
+/.data/
+/.data-*/
+/.*-store.json
+/.email-captured-sink.json
 /test-results/
 /playwright-report/

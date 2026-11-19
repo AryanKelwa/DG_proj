@@ -1,10 +1,10 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert";
-import { registerCustomerUser, resetUsersStore, createSessionToken, verifySessionToken, getUserByEmail } from "@/modules/auth/users-store";
-import { getOrdersForUser, createOrder, resetOrderStore } from "@/modules/orders/order-store";
-import { getProofsForUser, getProofById, resetProofsStore } from "@/modules/proofs/proofs-store";
-import { getSavedDesignsForUser, getSavedDesignById, saveDesign, resetSavedDesignsStore } from "@/modules/designs/saved-designs-store";
-import { seedPhaseHDatabase, SEED_USERS_MAP, SEED_PROOFS, SEED_DESIGNS, PHASE_H_ORDERS } from "@/modules/seed/seed-data";
+import { registerCustomerUser } from "@/modules/auth/users-store";
+import { getOrdersForUser, createOrder } from "@/modules/orders/order-store";
+import { getProofsForUser } from "@/modules/proofs/proofs-store";
+import { getSavedDesignsForUser } from "@/modules/designs/saved-designs-store";
+import { seedPhaseHDatabase } from "@/modules/seed/seed-data";
 import { Order } from "@/types/database";
 
 describe("PHASE I: Customer Data Leak & Strict Tenant Isolation (PRD § 03, § 10)", () => {

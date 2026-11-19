@@ -1,4 +1,4 @@
-import { EmailPayload, EmailSendResult, EmailEvent } from "./types";
+import { EmailPayload, EmailSendResult } from "./types";
 import { renderEmail } from "./templates";
 import { hasSuccessfulSend, recordEmailLog } from "./email-store";
 import { sendTransactionalEmail } from "./email-provider";

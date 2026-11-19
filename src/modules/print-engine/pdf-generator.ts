@@ -1,6 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { SerializedCanvasState } from "../designer/types";
-import { generateStandardPrintFileName, FileNamingParams } from "./file-naming";
+import { generateStandardPrintFileName } from "./file-naming";
 
 export const MM_TO_PT = 72 / 25.4; // ~2.834645 pt per mm
 
