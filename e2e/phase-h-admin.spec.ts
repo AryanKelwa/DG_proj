@@ -157,7 +157,7 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
 
     // Combined: Stage 'ORDER' + Payment 'pending_payment'
     await page.locator('[data-testid="admin-stage-filter"]').selectOption("ORDER");
-    await page.locator('[data-testid="admin-payment-filter"]').selectOption("pending_payment");
+    await page.locator('[data-testid="admin-payment-filter"]').selectOption("pending");
     await page.waitForTimeout(300);
     await expect(page.locator("text=W2P-2026-00102")).toBeVisible();
   });

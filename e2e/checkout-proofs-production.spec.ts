@@ -166,7 +166,8 @@ test("revised proof after payment re-locks production until the customer approve
   const pdf = files.find((f: { kind: string }) => f.kind === "pdf");
   expect(pdf.fileName).toMatch(new RegExp(`^${orderNumber}_labels-stickers_\\d{8}_Output\\.pdf$`));
   expect(files.some((f: { kind: string }) => f.kind === "png")).toBe(true);
-  const bytes = await (await request.get(pdf.url)).body();
+  // Fetch from storage with Node fetch (honours the environment proxy).
+  const bytes = Buffer.from(await (await fetch(pdf.url)).arrayBuffer());
   expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
 
   // Customers can never reach admin downloads

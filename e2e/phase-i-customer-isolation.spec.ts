@@ -185,8 +185,9 @@ test.describe("PHASE I: Customer Data Leak & Identity Hardening (PRD § 03, § 1
       const data = await res.json();
       return { status: res.status, orders: data.orders };
     });
-    // Mohit only gets his own orders, NEVER Sarah's orders
-    expect(ordersRes.orders.every((o: { customer_email?: string }) => o.customer_email !== "sarah@enduroclub.uk")).toBe(true);
+    // Asking for another customer's orders is refused outright
+    expect(ordersRes.status).toBe(403);
+    expect(ordersRes.orders).toBeUndefined();
   });
 
   test("5. Grep Repository Check: 'Sarah' and '7911' must be zero outside seed script and tests", async () => {

@@ -565,7 +565,7 @@ export function ProductionDashboardView() {
                   >
                     <option value="ALL">All Payments</option>
                     <option value="paid">Paid (Confirmed)</option>
-                    <option value="pending_payment">Pending Payment</option>
+                    <option value="pending">Pending Payment</option>
                     <option value="failed">Failed</option>
                     <option value="cancelled">Cancelled</option>
                   </select>

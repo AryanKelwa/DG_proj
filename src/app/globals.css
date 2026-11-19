@@ -115,3 +115,13 @@
     linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
 }
+
+/*
+ * <main> is a flex column; page containers use `mx-auto`, which would otherwise
+ * size them to their content (wide tables then push the page past the viewport
+ * on phones). Make them fill the width and allow shrinking; max-width still applies.
+ */
+main > * {
+  width: 100%;
+  min-width: 0;
+}
