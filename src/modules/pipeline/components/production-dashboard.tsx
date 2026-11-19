@@ -1213,7 +1213,7 @@ export function ProductionDashboardView() {
                     <h4 className="text-sm font-bold text-neutral-900 mb-3">
                       Throughput & Volume by Manufacturing Division
                     </h4>
-                    <div className="border border-neutral-200 rounded-lg overflow-hidden">
+                    <div className="border border-neutral-200 rounded-lg overflow-x-auto">
                       <table className="w-full text-left text-sm">
                         <thead className="bg-neutral-50 text-xs font-semibold uppercase text-neutral-600 border-b border-neutral-200">
                           <tr>
