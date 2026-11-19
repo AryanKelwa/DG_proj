@@ -16,7 +16,7 @@ export default async function GalleryPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
       <div className="space-y-2">
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-medium">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-600 text-xs font-medium">
           Production Gallery
         </span>
         <h1 className="text-3xl sm:text-4xl font-extrabold font-heading tracking-tight">
@@ -53,7 +53,7 @@ export default async function GalleryPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {divisionProducts.map((prod) => (
-                <Card key={prod.id} className="overflow-hidden group hover:border-brand-500 transition-colors">
+                <Card key={prod.id} className="overflow-hidden group hover-lift" data-testid="gallery-card">
                   <div className="aspect-[4/3] w-full overflow-hidden relative bg-muted">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img

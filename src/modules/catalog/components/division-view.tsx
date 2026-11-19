@@ -37,7 +37,7 @@ export function DivisionView({ division, products }: DivisionViewProps) {
           <h1 className="text-3xl sm:text-5xl font-extrabold font-heading tracking-tight">
             {division.name}
           </h1>
-          <p className="text-lg font-mono text-brand-400">
+          <p className="text-lg font-mono text-brand-600">
             {division.tagline}
           </p>
           <p className="text-sm text-industrial-300 leading-relaxed max-w-2xl font-sans">

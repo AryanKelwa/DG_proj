@@ -44,20 +44,19 @@ test.describe("W8. Customer Dashboard & 1-Click Reorder (PRD §09, §10)", () =>
     const ordersTabBtn = page.locator("button:has-text('Order History')").first();
     await ordersTabBtn.click();
 
-    // Click 1-Click Reorder on the order card
-    const reorderBtn = page.getByRole("button", { name: "1-Click Reorder", exact: true }).first();
+    // Reorder a paid order: its approved artwork is copied into a new job that goes straight to checkout.
+    const reorderBtn = page.getByTestId("reorder-button").first();
     await reorderBtn.click();
-
-    // Expect success banner with new order number
-    await expect(page.locator("text=placed successfully via 1-Click Reorder")).toBeVisible({
-      timeout: 10000,
-    });
+    await page.waitForURL(/\/checkout\?draft=/, { timeout: 30000 });
+    await expect(page.locator("text=approved").first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("pay-button")).toBeVisible();
   });
 
   test("PRD §10 Module 6: Downloadable tax invoice endpoint returns valid PDF receipt", async ({
-    request,
+    page,
   }) => {
-    const invoiceRes = await request.get("/api/orders/W2P-2026-00101/invoice");
+    // The page is signed in as Sarah (beforeEach), so its request context carries her session.
+    const invoiceRes = await page.request.get("/api/orders/W2P-2026-00101/invoice");
     expect(invoiceRes.status()).toBe(200);
 
     const contentType = invoiceRes.headers()["content-type"];

@@ -4,7 +4,6 @@ import { VariableDataAttach } from "@/modules/variable-data/components/variable-
 import React, { useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
 import { Product } from "@/types/database";
 import {
   CanvasElement,
@@ -58,7 +57,6 @@ export function DesignerPageView({
   quantity,
 }: DesignerPageViewProps) {
   const router = useRouter();
-  const { user } = useAuth();
   const [effectiveDraftId, setEffectiveDraftId] = useState<string>(draftId || "");
   const [currentProofVersion, setCurrentProofVersion] = useState<number>(1);
   const [isApproving, setIsApproving] = useState<boolean>(false);
@@ -236,11 +234,8 @@ export function DesignerPageView({
 
   // Saves the design to the customer's account (PRD § 09 saved designs).
   const handleSaveDesign = async () => {
-    if (!user) {
-      setSavedJsonNotice("Sign in to save designs to your account.");
-      setTimeout(() => setSavedJsonNotice(null), 4000);
-      return;
-    }
+    // The server decides whether the visitor is signed in (the client auth state may still be loading).
+    try {
     const res = await fetch("/api/designs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -254,8 +249,17 @@ export function DesignerPageView({
       }),
     });
     const data = await res.json().catch(() => ({}));
-    setSavedJsonNotice(res.ok ? "Design saved to your account." : data.error || "Could not save the design.");
-    setTimeout(() => setSavedJsonNotice(null), 4000);
+    setSavedJsonNotice(
+      res.ok
+        ? "Design saved to your account."
+        : res.status === 401
+          ? "Sign in to save designs to your account."
+          : `Could not save the design: ${data.error || res.status}`
+    );
+    } catch {
+      setSavedJsonNotice("Could not save the design: network error. Please try again.");
+    }
+    setTimeout(() => setSavedJsonNotice(null), 6000);
   };
 
   // Creates the job draft the first time it is needed (no draft is created just by viewing).
@@ -396,7 +400,7 @@ export function DesignerPageView({
       <div className="p-6 rounded-2xl bg-industrial-950 text-white border border-industrial-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-300 text-xs font-medium">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-600 text-xs font-medium">
               Interactive Studio
             </span>
             <span className="text-xs font-mono text-industrial-400">
@@ -410,7 +414,7 @@ export function DesignerPageView({
             <span>Trim Box: <strong className="text-white">{dimensions.widthMm}mm × {dimensions.heightMm}mm</strong></span>
             <span>Bleed: <strong className="text-red-400">+{dimensions.bleedMm}mm</strong></span>
             <span>Safety Margin: <strong className="text-emerald-400">{dimensions.safetyMarginMm}mm</strong></span>
-            <span>Batch Quantity: <strong className="text-brand-400">{quantity} units</strong></span>
+            <span>Batch Quantity: <strong className="text-brand-600">{quantity} units</strong></span>
           </div>
         </div>
 
@@ -498,7 +502,7 @@ export function DesignerPageView({
                     className="text-xs font-mono"
                   >
                     <Save className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-                    Save Design JSON
+                    Save to my designs
                   </Button>
                 </div>
 
@@ -585,7 +589,7 @@ export function DesignerPageView({
           <div className="bg-card border max-w-2xl w-full rounded-2xl shadow-elevation overflow-hidden my-auto max-h-[92vh] flex flex-col">
             <div className="p-4 sm:p-6 border-b flex items-center justify-between shrink-0">
               <div>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-medium">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-600 text-xs font-medium">
                   Digital Proof Inspection
                 </span>
                 <h3 className="text-lg sm:text-xl font-bold font-heading mt-1">

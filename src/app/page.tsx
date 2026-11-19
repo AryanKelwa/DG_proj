@@ -24,7 +24,7 @@ export default async function HomePage() {
       <section className="relative overflow-hidden pt-12 pb-16 md:pt-20 md:pb-24 border-b border-border/60 bg-gradient-to-b from-background via-secondary/30 to-background technical-grid">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="max-w-3xl space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-50 border border-brand-200 dark:bg-brand-950/40 dark:border-brand-800 text-xs font-mono font-semibold text-brand-600 dark:text-brand-400">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-50 border border-brand-200 dark:bg-brand-950/40 dark:border-brand-800 text-xs font-mono font-semibold text-brand-600 dark:text-brand-600">
               <span className="flex h-2 w-2 rounded-full bg-brand-500 animate-ping" />
               <span>W2P · SIX DIVISIONS · ONE PLATFORM</span>
             </div>
@@ -80,7 +80,7 @@ export default async function HomePage() {
       <section id="divisions" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
           <div>
-            <div className="text-xs font-semibold uppercase text-brand-600 dark:text-brand-400 tracking-wider">
+            <div className="text-xs font-semibold uppercase text-brand-600 dark:text-brand-600 tracking-wider">
               Manufacturing Catalog
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-heading mt-1">
@@ -97,7 +97,7 @@ export default async function HomePage() {
             <Link
               key={div.id}
               href={`/divisions/${div.slug}`}
-              className="group relative flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-subtle hover:shadow-elevation hover:border-brand-500/50 transition-all duration-300"
+              className="group relative flex flex-col justify-between rounded-2xl glass p-6 hover-lift hover:border-brand-200"
             >
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -122,7 +122,7 @@ export default async function HomePage() {
               </div>
 
               <div className="pt-6 mt-6 border-t border-border flex items-center justify-between text-xs font-mono">
-                <span className="text-foreground font-semibold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform text-brand-600 dark:text-brand-400">
+                <span className="text-foreground font-semibold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform text-brand-600 dark:text-brand-600">
                   Select & Customise
                   <ArrowRight className="w-3.5 h-3.5" />
                 </span>
@@ -140,7 +140,7 @@ export default async function HomePage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
             <div className="lg:col-span-7 space-y-4">
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-brand-500/20 text-brand-400 font-mono text-xs font-semibold">
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-brand-500/20 text-brand-600 font-mono text-xs font-semibold">
                 <Zap className="w-3.5 h-3.5" />
                 <span>INSTANT FORMULA PRICING ENGINE</span>
               </div>
@@ -169,7 +169,7 @@ export default async function HomePage() {
             <div className="lg:col-span-5 bg-industrial-900 border border-industrial-800 rounded-xl p-5 font-mono text-xs space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-industrial-800 text-industrial-400">
                 <span>FORMULA MATRIX</span>
-                <Badge variant="outline" className="text-[10px] text-brand-400 border-brand-500/30">
+                <Badge variant="outline" className="text-[10px] text-brand-600 border-brand-500/30">
                   REAL-TIME
                 </Badge>
               </div>
@@ -187,11 +187,11 @@ export default async function HomePage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-industrial-400">Volume Tier (250 units):</span>
-                <span className="text-brand-400">-30% Automated Discount</span>
+                <span className="text-brand-600">-30% Automated Discount</span>
               </div>
               <div className="pt-2 border-t border-industrial-800 flex justify-between font-bold text-sm">
                 <span className="text-white">Total (excl. GST):</span>
-                <span className="text-brand-400">₹1,445.00</span>
+                <span className="text-brand-600">₹1,445.00</span>
               </div>
             </div>
           </div>
@@ -202,7 +202,7 @@ export default async function HomePage() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
           <div>
-            <div className="text-xs font-semibold uppercase text-brand-600 dark:text-brand-400 tracking-wider">
+            <div className="text-xs font-semibold uppercase text-brand-600 dark:text-brand-600 tracking-wider">
               Featured Production Work
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-heading mt-1">
@@ -248,7 +248,7 @@ export default async function HomePage() {
                   </span>
                   <Link
                     href={`/calculator?product=${prod.slug}`}
-                    className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1"
+                    className="text-xs font-semibold text-brand-600 dark:text-brand-600 hover:underline flex items-center gap-1"
                   >
                     Customise & Price
                     <ArrowRight className="w-3 h-3" />

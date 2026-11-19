@@ -52,11 +52,7 @@ function LoginForm() {
 
       if (redirectUrl) {
         router.push(redirectUrl);
-      } else if (
-        email.toLowerCase().includes("admin") ||
-        email.toLowerCase().includes("w2p") ||
-        email.toLowerCase().includes("digitalheroes")
-      ) {
+      } else if (res.user?.role === "admin") {
         router.push("/production");
       } else {
         router.push("/dashboard");
@@ -70,7 +66,7 @@ function LoginForm() {
     <div className="max-w-md mx-auto px-4 py-16 w-full">
       <Card className="border-border shadow-elevation">
         <CardHeader className="space-y-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-medium w-fit">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-600 text-xs font-medium w-fit">
             Secure Sign In
           </span>
           <CardTitle className="text-2xl font-bold font-heading">Sign In to W2P</CardTitle>

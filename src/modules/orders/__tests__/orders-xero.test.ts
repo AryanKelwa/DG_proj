@@ -9,7 +9,7 @@ describe("Checkout, Accounting-Ready Data (Xero) & Reorder Tests (§ 05, § 09, 
   const sampleOrder = INITIAL_ORDERS[0];
 
   describe("Xero Accounting Schema Compliance (§ 05 & § 14)", () => {
-    it("generates valid ACCREC invoice payload with Sales 200 and OUTPUT2 tax codes", () => {
+    it("generates valid ACCREC invoice payload with Sales 200 and GST/IGST tax types in INR", () => {
       const payload = generateXeroInvoicePayload(sampleOrder);
 
       // Verify standard Xero invoice attributes
@@ -17,7 +17,7 @@ describe("Checkout, Accounting-Ready Data (Xero) & Reorder Tests (§ 05, § 09, 
       assert.equal(payload.InvoiceNumber, `INV-${sampleOrder.order_number}`);
       assert.equal(payload.Status, "AUTHORISED");
       assert.equal(payload.LineAmountTypes, "Exclusive");
-      assert.equal(payload.CurrencyCode, "GBP");
+      assert.equal(payload.CurrencyCode, "INR");
 
       // Verify Contact mapping
       assert.equal(payload.Contact.Name, sampleOrder.customer_name);
@@ -32,7 +32,7 @@ describe("Checkout, Accounting-Ready Data (Xero) & Reorder Tests (§ 05, § 09, 
       // Verify line items
       assert.ok(payload.LineItems.length > 0);
       assert.equal(payload.LineItems[0].AccountCode, "200");
-      assert.equal(payload.LineItems[0].TaxType, "OUTPUT2");
+      assert.match(payload.LineItems[0].TaxType, /^I?GST\d+$/);
     });
 
     it("calculates Net 14 due date accurately", () => {

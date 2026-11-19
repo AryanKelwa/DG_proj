@@ -66,7 +66,7 @@ test.describe("W2. Signup & Login (PRD §09, §15, §16)", () => {
     await expect(errorMsg.first()).toBeVisible();
 
     // 2. Correct credentials for Customer -> redirects to /dashboard
-    await loginViaUi(page, TEST_USERS.customerA, "/dashboard");
+    await loginViaUi(page, TEST_USERS.customerA, "/dashboard", { fresh: true });
     expect(page.url()).toContain("/dashboard");
     await expect(page.locator("body")).toContainText(TEST_USERS.customerA.name);
 
@@ -74,7 +74,7 @@ test.describe("W2. Signup & Login (PRD §09, §15, §16)", () => {
     await logoutViaUi(page);
 
     // 4. Correct credentials for Admin -> redirects to /production
-    await loginViaUi(page, TEST_USERS.admin, "/production");
+    await loginViaUi(page, TEST_USERS.admin, "/production", { fresh: true });
     expect(page.url()).toContain("/production");
     await expect(page.locator("body")).toContainText("Production Pipeline");
   });

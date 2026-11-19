@@ -27,31 +27,52 @@ export const TEST_USERS = {
 /**
  * Performs real UI login through the login page (/login)
  */
+/**
+ * Signs in through the real login form. The resulting session cookies are cached
+ * per user for the rest of the run and reused on later calls, because Supabase Auth
+ * rate-limits password sign-ins per IP (about 30 per 5 minutes). Pass
+ * `{ fresh: true }` to always exercise the form.
+ */
+const sessionCache = new Map<string, { cookies: Awaited<ReturnType<import("@playwright/test").BrowserContext["cookies"]>>; at: number }>();
+
 export async function loginViaUi(
   page: Page,
   credentials: { email: string; password: string },
-  expectedDestination?: string
+  expectedDestination?: string,
+  options: { fresh?: boolean } = {}
 ) {
+  const cached = sessionCache.get(credentials.email);
+  if (cached && !options.fresh && Date.now() - cached.at < 30 * 60_000) {
+    await page.context().addCookies(cached.cookies);
+    await page.goto(expectedDestination || "/dashboard");
+    await page.waitForLoadState("domcontentloaded");
+    return;
+  }
+
   await page.goto("/login");
   await page.waitForLoadState("domcontentloaded");
-
-  // Fill credentials
   await page.fill('input[type="email"]', credentials.email);
   await page.fill('input[type="password"]', credentials.password);
-
-  // Click Submit
   await page.click('button[type="submit"]');
 
   if (expectedDestination) {
-    await page.waitForURL(`**${expectedDestination}`, { timeout: 10000 });
+    // Sign-in round-trips to Supabase Auth; allow for network latency.
+    await page.waitForURL(`**${expectedDestination}`, { timeout: 30000 });
   }
+  const cookies = (await page.context().cookies()).filter((c) => c.name.startsWith("sb-"));
+  if (cookies.length) sessionCache.set(credentials.email, { cookies, at: Date.now() });
 }
 
 /**
  * Performs UI logout
  */
 export async function logoutViaUi(page: Page) {
-  const signOutButton = page.locator('button:has-text("Sign Out")').first();
+  // Signing out revokes the user's sessions, so cached sessions are no longer valid.
+  sessionCache.clear();
+  // On small screens Sign Out lives in the menu drawer.
+  const menuToggle = page.getByRole("button", { name: "Toggle menu" });
+  if (await menuToggle.isVisible()) await menuToggle.click();
+  const signOutButton = page.locator('button:has-text("Sign Out"):visible').first();
   if (await signOutButton.isVisible()) {
     await signOutButton.click();
     // Logout may land on /login?redirect=..., so match the path with or without a query string.
