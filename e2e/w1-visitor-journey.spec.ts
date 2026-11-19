@@ -64,7 +64,7 @@ test.describe("W1. Visitor Journey (PRD §03, §04, §12)", () => {
     await expect(page.locator("h1")).toContainText(/Pricing|Calculator/i);
 
     // Check default pricing is rendered
-    const priceDisplay = page.locator("text=£").first();
+    const priceDisplay = page.locator("text=₹").first();
     await expect(priceDisplay).toBeVisible();
 
     // Change quantity to test live recalculation
@@ -73,7 +73,7 @@ test.describe("W1. Visitor Journey (PRD §03, §04, §12)", () => {
 
     // Quantity update should trigger price change
     await page.waitForTimeout(300); // Allow brief debounce
-    const updatedGross = page.locator("text=£");
+    const updatedGross = page.locator("text=₹");
     await expect(updatedGross.first()).toBeVisible();
   });
 

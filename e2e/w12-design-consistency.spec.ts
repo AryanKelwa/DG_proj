@@ -9,7 +9,8 @@ test.describe("W12. Design Consistency & Accessibility (PRD §12)", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Check primary button styling matches brand-500 palette (#2563EB or CSS variable)
-    const primaryButton = page.locator("button:has-text('Select Division & Customise')").first();
+    // The hero's primary call to action (rendered as a link styled as a button).
+    const primaryButton = page.locator("main a.shadow-glow").first();
     await expect(primaryButton).toBeVisible();
 
     const computedStyle = await primaryButton.evaluate((el) => {

@@ -22,7 +22,8 @@ let stripeClient: Stripe | null = null;
 export function stripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not configured.");
-  stripeClient ??= new Stripe(key);
+  // fetch-based client: works on serverless/edge runtimes and honours outbound proxies.
+  stripeClient ??= new Stripe(key, { httpClient: Stripe.createFetchHttpClient() });
   return stripeClient;
 }
 

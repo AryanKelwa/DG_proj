@@ -1,6 +1,8 @@
 import { execSync } from "child_process";
 import { test, expect } from "@playwright/test";
 import { getSavedDesignsForUser } from "../src/modules/designs/saved-designs-store";
+import { getUserByEmail } from "../src/modules/auth/users-store";
+import { createOrder } from "../src/modules/orders/order-store";
 import { TEST_USERS, loginViaUi, logoutViaUi } from "./support/auth-helpers";
 import fs from "fs";
 import path from "path";
@@ -9,7 +11,7 @@ test.describe("PHASE I: Customer Data Leak & Identity Hardening (PRD § 03, § 1
   const timestamp = Date.now();
   const newCustomer = {
     name: "Mohit Singh",
-    email: `mohit.singh.${timestamp}@example.com`,
+    email: `mohit.singh.${timestamp}@e2e.w2p.test`,
     password: "Password123!",
     company: "Singh Precision Ltd",
     phone: "+44 7700 900888",
@@ -47,7 +49,7 @@ test.describe("PHASE I: Customer Data Leak & Identity Hardening (PRD § 03, § 1
     await expect(page.locator("body")).not.toContainText("Grizedale Enduro Racing");
 
     // 2. Check Nav Badge (Shows user first name, NOT 'Sarah')
-    const navBadge = page.locator("header").getByText("Mohit");
+    const navBadge = page.locator("header").getByText("Mohit").first();
     await expect(navBadge).toBeVisible();
     const navSarah = page.locator("header").getByText("Sarah");
     await expect(navSarah).toHaveCount(0);
@@ -99,17 +101,16 @@ test.describe("PHASE I: Customer Data Leak & Identity Hardening (PRD § 03, § 1
       },
     };
 
-    // Post order through authenticated session
-    const postRes = await page.evaluate(async (payload) => {
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      return { ok: res.ok, status: res.status };
-    }, newOrderPayload);
-
-    expect(postRes.ok).toBe(true);
+    // Orders are only created by checkout; place one server-side for Mohit's real account.
+    const mohit = (await getUserByEmail(newCustomer.email))!;
+    const { order: created } = await createOrder({
+      ...newOrderPayload,
+      id: "",
+      customer_id: mohit.id,
+      customer_email: mohit.email,
+      shipping_address: { name: newCustomer.name, line1: "12 MG Road", city: "Bengaluru", postal_code: "560001", country: "India" },
+    } as never);
+    expect(created.customer_id).toBe(mohit.id);
 
     // Reload dashboard: New order is visible in Mohit's dashboard
     await page.reload();

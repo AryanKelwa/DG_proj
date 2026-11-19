@@ -15,6 +15,11 @@ const BASE_URL = `http://localhost:${PORT}`;
 // Shared by the test runner (specs that import server modules) and the dev server.
 process.env.W2P_DATA_DIR = process.env.W2P_DATA_DIR || ".data-e2e";
 process.env.EMAIL_PROVIDER = "test";
+// Webhook tests sign events with this secret; the dev server verifies with the same value.
+process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "whsec_e2e_local_test_secret";
+// Specs that call Stripe directly need the key from .env.local.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+require("@next/env").loadEnvConfig(process.cwd());
 
 const launchOptions = process.env.PW_CHROMIUM_EXECUTABLE
   ? { executablePath: process.env.PW_CHROMIUM_EXECUTABLE }
@@ -53,6 +58,7 @@ export default defineConfig({
     env: {
       W2P_DATA_DIR: process.env.W2P_DATA_DIR,
       EMAIL_PROVIDER: "test",
+      STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
       NEXT_PUBLIC_APP_URL: BASE_URL,
     },
   },

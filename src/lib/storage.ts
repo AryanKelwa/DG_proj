@@ -16,7 +16,7 @@ export const STORAGE_PREFIX = "storage:";
 const BUCKET_LIMITS: Record<Bucket, number> = {
   artwork: 50 * 1024 * 1024,
   proofs: 20 * 1024 * 1024,
-  production: 200 * 1024 * 1024,
+  production: 50 * 1024 * 1024, // Supabase free-tier per-file limit
 };
 
 const ensured = new Set<Bucket>();

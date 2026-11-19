@@ -52,11 +52,7 @@ function LoginForm() {
 
       if (redirectUrl) {
         router.push(redirectUrl);
-      } else if (
-        email.toLowerCase().includes("admin") ||
-        email.toLowerCase().includes("w2p") ||
-        email.toLowerCase().includes("digitalheroes")
-      ) {
+      } else if (res.user?.role === "admin") {
         router.push("/production");
       } else {
         router.push("/dashboard");

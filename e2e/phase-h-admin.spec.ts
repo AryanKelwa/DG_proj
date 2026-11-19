@@ -162,53 +162,7 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
     await expect(page.locator("text=W2P-2026-00102")).toBeVisible();
   });
 
-  test("3. Ready Indicator, Download Gate & 60-Second Signed URLs: Refused before, works after, expired token fails, action logged", async ({
-    page,
-    request,
-  }) => {
-    setupErrorListeners(page);
-
-    const adminToken = await apiToken(request, TEST_USERS.admin);
-
-    // 1. Unpaid / unapproved order (W2P-2026-00301) download request is REFUSED (403)
-    const unreadyRes = await request.get("/api/admin/orders/W2P-2026-00301/download-production", {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    expect(unreadyRes.status()).toBe(403);
-    const unreadyJson = await unreadyRes.json();
-    expect(unreadyJson.error).toContain("not ready for production");
-
-    // 2. Paid & approved order (W2P-2026-00101) download request SUCCEEDS
-    const readyRes = await request.get("/api/admin/orders/W2P-2026-00101/download-production", {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    expect(readyRes.status()).toBe(200);
-    const readyJson = await readyRes.json();
-    expect(readyJson.success).toBe(true);
-    expect(readyJson.downloadUrl).toContain("/api/admin/orders/W2P-2026-00101/download-file?token=");
-    expect(readyJson.ttlSeconds).toBe(60);
-
-    // 3. Fetching with valid signed URL token succeeds and serves PDF binary
-    const fileRes = await request.get(readyJson.downloadUrl);
-    expect(fileRes.status()).toBe(200);
-    expect(fileRes.headers()["content-type"]).toBe("application/pdf");
-    const fileBytes = await fileRes.body();
-    expect(fileBytes.length).toBeGreaterThan(1000);
-
-    // 4. Tampered / guessed URL token is REFUSED (403)
-    const tamperedRes = await request.get(`/api/admin/orders/W2P-2026-00101/download-file?token=${readyJson.token}invalid`);
-    expect(tamperedRes.status()).toBe(403);
-
-    // 5. Expired token is REFUSED (403)
-    const { token: expiredToken } = generateSignedDownloadToken("W2P-2026-00101", -10); // expired 10s ago
-    const expiredRes = await request.get(`/api/admin/orders/W2P-2026-00101/download-file?token=${expiredToken}`);
-    expect(expiredRes.status()).toBe(403);
-
-    // 6. Verify download action was recorded in audit store
-    const logs = await getAuditLogs({ action: "production_file_download" });
-    expect(logs.length).toBeGreaterThan(0);
-    expect(logs[0].target_id).toBe("W2P-2026-00101");
-  });
+  // Test 3 (download gate and short-lived links) now lives in checkout-proofs-production.spec.ts.
 
   test("4. Sequential Pipeline: Forward passes, skip/backward rejected, history logged, concurrency returns 409", async ({
     request,

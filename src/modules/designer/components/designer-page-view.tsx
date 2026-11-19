@@ -4,7 +4,6 @@ import { VariableDataAttach } from "@/modules/variable-data/components/variable-
 import React, { useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
 import { Product } from "@/types/database";
 import {
   CanvasElement,
@@ -58,7 +57,6 @@ export function DesignerPageView({
   quantity,
 }: DesignerPageViewProps) {
   const router = useRouter();
-  const { user } = useAuth();
   const [effectiveDraftId, setEffectiveDraftId] = useState<string>(draftId || "");
   const [currentProofVersion, setCurrentProofVersion] = useState<number>(1);
   const [isApproving, setIsApproving] = useState<boolean>(false);
@@ -236,11 +234,8 @@ export function DesignerPageView({
 
   // Saves the design to the customer's account (PRD § 09 saved designs).
   const handleSaveDesign = async () => {
-    if (!user) {
-      setSavedJsonNotice("Sign in to save designs to your account.");
-      setTimeout(() => setSavedJsonNotice(null), 4000);
-      return;
-    }
+    // The server decides whether the visitor is signed in (the client auth state may still be loading).
+    try {
     const res = await fetch("/api/designs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -254,8 +249,17 @@ export function DesignerPageView({
       }),
     });
     const data = await res.json().catch(() => ({}));
-    setSavedJsonNotice(res.ok ? "Design saved to your account." : data.error || "Could not save the design.");
-    setTimeout(() => setSavedJsonNotice(null), 4000);
+    setSavedJsonNotice(
+      res.ok
+        ? "Design saved to your account."
+        : res.status === 401
+          ? "Sign in to save designs to your account."
+          : `Could not save the design: ${data.error || res.status}`
+    );
+    } catch {
+      setSavedJsonNotice("Could not save the design: network error. Please try again.");
+    }
+    setTimeout(() => setSavedJsonNotice(null), 6000);
   };
 
   // Creates the job draft the first time it is needed (no draft is created just by viewing).
@@ -498,7 +502,7 @@ export function DesignerPageView({
                     className="text-xs font-mono"
                   >
                     <Save className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-                    Save Design JSON
+                    Save to my designs
                   </Button>
                 </div>
 

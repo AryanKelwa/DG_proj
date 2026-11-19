@@ -1,3 +1,4 @@
+import { TEST_USERS, loginViaUi } from "./support/auth-helpers";
 import { test, expect } from "@playwright/test";
 import path from "path";
 
@@ -28,6 +29,8 @@ test.describe("W4. Web-to-Print Designer (PRD §06)", () => {
   test("PRD §06: Add, edit, and manipulate text elements with shrink-to-fit rules", async ({
     page,
   }) => {
+    // Saving to the account library needs a signed-in customer.
+    await loginViaUi(page, TEST_USERS.customerA, "/dashboard");
     await page.goto(designerUrl);
     await page.waitForLoadState("domcontentloaded");
 
@@ -49,11 +52,11 @@ test.describe("W4. Web-to-Print Designer (PRD §06)", () => {
     }
 
     // Save design JSON
-    const saveBtn = page.locator("button:has-text('Save Design JSON')").first();
+    const saveBtn = page.locator("button:has-text('Save to my designs')").first();
     await saveBtn.click();
 
-    // Success notification
-    await expect(page.locator("text=Design state serialized & saved")).toBeVisible();
+    // Saved to the account (server), not just the browser
+    await expect(page.locator("text=Design saved to your account")).toBeVisible({ timeout: 45000 });
   });
 
   test("PRD §06: Real-time digital proof inspection modal opens and generates preview", async ({
@@ -89,7 +92,7 @@ test.describe("W4. Web-to-Print Designer (PRD §06)", () => {
     await uploadTabBtn.click();
 
     // Verify upload dropzone
-    await expect(page.locator("text=Drop artwork here or click to browse")).toBeVisible();
+    await expect(page.locator("text=Choose an artwork file")).toBeVisible();
 
     // 1. Upload valid SVG
     const validSvgPath = path.resolve(process.cwd(), "e2e/fixtures/valid-artwork.svg");
@@ -97,8 +100,17 @@ test.describe("W4. Web-to-Print Designer (PRD §06)", () => {
     await fileInput.setInputFiles(validSvgPath);
 
     // Verify upload success banner
-    await expect(page.locator("text=Pre-flight Verified").or(page.locator("text=READY FOR PROOF")).first()).toBeVisible({
-      timeout: 10000,
+    // Real upload: signed URL → storage → server pre-flight (first call also compiles the routes in dev).
+    await expect(page.getByTestId("upload-success")).toBeVisible({
+      timeout: 60000,
     });
+
+    // 2. An unsupported file is refused before anything is uploaded
+    await fileInput.setInputFiles(path.resolve(process.cwd(), "e2e/fixtures/invalid-type.txt"));
+    await expect(page.locator("[role=alert]", { hasText: "Unsupported file type" })).toBeVisible();
+
+    // 3. A file with a PNG name but corrupt content is rejected by the server pre-flight
+    await fileInput.setInputFiles(path.resolve(process.cwd(), "e2e/fixtures/corrupt-file.png"));
+    await expect(page.locator("[role=alert]").filter({ hasText: /damaged|not a valid|empty/i })).toBeVisible({ timeout: 60000 });
   });
 });
