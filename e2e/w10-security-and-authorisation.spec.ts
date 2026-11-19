@@ -31,7 +31,7 @@ test.describe("W10. Security & Role Authorization (PRD §03, §10, §13)", () =>
     // Direct attempt /dashboard
     await page.goto("/dashboard");
     await page.waitForLoadState("domcontentloaded");
-    await expect(page.locator("text=Sign In to View Customer Portal").or(page.locator("text=Sign In")).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /sign in/i }).first()).toBeVisible();
   });
 
   test("PRD §10: Customer A cannot see Customer B's private orders or profile data", async ({
