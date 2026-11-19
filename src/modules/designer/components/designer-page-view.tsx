@@ -1,5 +1,6 @@
 "use client";
 
+import { VariableDataAttach } from "@/modules/variable-data/components/variable-data-attach";
 import React, { useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -564,6 +565,16 @@ export function DesignerPageView({
             onUploadSuccess={() => {
               handleOpenProofModal();
             }}
+          />
+        </div>
+      )}
+
+      {product.has_variable_data && (
+        <div className="max-w-2xl">
+          <VariableDataAttach
+            quantity={quantity}
+            sampleHeaders={product.variable_data_sample_headers}
+            ensureDraftId={ensureDraftId}
           />
         </div>
       )}
