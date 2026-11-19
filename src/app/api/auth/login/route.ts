@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     password: parsed.data.password,
   });
 
-  if (error?.status === 429) {
+  if (error && (error.status === 429 || /rate limit/i.test(error.message) || error.code === "over_request_rate_limit")) {
     return NextResponse.json(
       { error: "Too many sign-in attempts. Please wait a few minutes and try again." },
       { status: 429 }

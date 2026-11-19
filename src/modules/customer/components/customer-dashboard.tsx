@@ -302,7 +302,7 @@ export function CustomerDashboardView() {
       )}
 
       {/* Navigation Tabs (§ 10 modules) */}
-      <div className="flex gap-2 border-b border-border pb-2 text-sm font-semibold">
+      <div className="flex gap-2 border-b border-border pb-2 text-sm font-semibold overflow-x-auto -mx-1 px-1" role="tablist">
         <button
           onClick={() => setActiveTab("orders")}
           className={`px-4 py-2 rounded-md transition-colors flex items-center gap-2 ${

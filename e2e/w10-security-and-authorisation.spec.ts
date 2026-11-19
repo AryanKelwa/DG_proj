@@ -26,7 +26,7 @@ test.describe("W10. Security & Role Authorization (PRD §03, §10, §13)", () =>
     // Direct attempt /production
     await page.goto("/production");
     await page.waitForLoadState("domcontentloaded");
-    await expect(page.locator("text=AUTHORIZATION FORBIDDEN").or(page.locator("text=Sign In")).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /authorization forbidden|sign in/i }).first()).toBeVisible();
 
     // Direct attempt /dashboard
     await page.goto("/dashboard");
