@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 /**
  * Resolves the on-disk location of an interim JSON store file.
@@ -19,8 +20,11 @@ export function dataFile(fileName: string): string {
     ? path.resolve(process.env.W2P_DATA_DIR)
     : path.join(process.cwd(), ".data");
 
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    // Read-only filesystem (e.g. serverless): fall back to the OS temp directory.
+    return path.join(os.tmpdir(), fileName);
   }
 
   return path.join(dir, fileName);
