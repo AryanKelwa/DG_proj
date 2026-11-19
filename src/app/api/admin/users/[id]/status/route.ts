@@ -7,7 +7,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
@@ -24,13 +24,13 @@ export async function PATCH(
       );
     }
 
-    const result = updateUserStatus(auth.user!.id, id, isActive);
+    const result = await updateUserStatus(auth.user!.id, id, isActive);
 
     if (!result.success || !result.user) {
       return NextResponse.json({ error: result.error || "Status update failed" }, { status: 400 });
     }
 
-    logAdminAction(
+    await logAdminAction(
       auth.user!.id,
       auth.user!.email,
       "user_status_change",

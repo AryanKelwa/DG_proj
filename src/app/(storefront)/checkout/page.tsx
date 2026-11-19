@@ -4,7 +4,6 @@ import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { PRODUCTS, DIVISIONS } from "@/lib/data/mock-data";
 import { JobDraft } from "@/types/draft";
 import { PricingBreakdown } from "@/modules/pricing/pricing-engine";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -32,6 +31,8 @@ function CheckoutContent() {
   const draftId = searchParams.get("draft");
   const [draft, setDraft] = useState<JobDraft | null>(null);
   const [pricing, setPricing] = useState<PricingBreakdown | null>(null);
+  const [product, setProduct] = useState<{ name: string; default_bleed_mm: number } | null>(null);
+  const [divisionName, setDivisionName] = useState<string>("");
   const [isLoadingDraft, setIsLoadingDraft] = useState<boolean>(true);
   const [gateError, setGateError] = useState<string | null>(null);
 
@@ -80,6 +81,8 @@ function CheckoutContent() {
         const d: JobDraft = data.draft;
         setDraft(d);
         setPricing(data.pricing);
+        setProduct(data.product);
+        setDivisionName(data.division?.name ?? "");
 
         // Enforce Workflow Order (§ 01, § 03, § 05, § 08)
         if (d.status !== "proof_approved" && d.status !== "payment_pending") {
@@ -194,7 +197,7 @@ function CheckoutContent() {
   }
 
   // 2. Workflow Gate Rejection View (Task 3: Rejection on direct access without approved proof)
-  if (gateError || !draft || !pricing) {
+  if (gateError || !draft || !pricing || !product) {
     return (
       <div className="max-w-xl mx-auto px-4 py-16">
         <Card className="border-destructive/40 shadow-elevation">
@@ -242,8 +245,6 @@ function CheckoutContent() {
     );
   }
 
-  const product = PRODUCTS.find((p) => p.id === draft.productId || p.slug === draft.productId) || PRODUCTS[0];
-  const division = DIVISIONS.find((d) => d.id === product.division_id) || DIVISIONS[0];
   const approvedProof = draft.proofs.find((p) => p.version === draft.proofVersion);
 
   return (
@@ -272,7 +273,7 @@ function CheckoutContent() {
             256-Bit SSL Encrypted
           </Badge>
           <Badge variant="industrial" className="text-xs font-mono py-1 px-3">
-            {division.name}
+            {divisionName}
           </Badge>
         </div>
       </div>
@@ -565,7 +566,7 @@ function CheckoutContent() {
               </div>
               <CardTitle className="text-xl text-white">{product.name}</CardTitle>
               <CardDescription className="text-xs text-industrial-300">
-                Division: {division.name}
+                Division: {divisionName}
               </CardDescription>
             </CardHeader>
 

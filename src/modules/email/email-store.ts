@@ -1,139 +1,98 @@
-import { dataFile } from "../../lib/data-dir";
-import fs from "fs";
-import crypto from "crypto";
+import { db, unwrap } from "@/lib/supabase/server";
 import { EmailLogRecord } from "./types";
 
-const EMAIL_STORE_FILE = dataFile(".email-logs-store.json");
-
-interface EmailStoreData {
-  logs: EmailLogRecord[];
-}
-
-let inMemoryStore: EmailStoreData = { logs: [] };
-let lastLoadedMtime = 0;
-let uniqueConstraintDisabled = false; // Mutation test toggle
-
-function loadStore() {
-  try {
-    if (fs.existsSync(EMAIL_STORE_FILE)) {
-      const stat = fs.statSync(EMAIL_STORE_FILE);
-      if (stat.mtimeMs > lastLoadedMtime || inMemoryStore.logs.length === 0) {
-        const raw = fs.readFileSync(EMAIL_STORE_FILE, "utf-8");
-        inMemoryStore = JSON.parse(raw);
-        lastLoadedMtime = stat.mtimeMs;
-      }
-    }
-  } catch (err) {
-    console.error("Failed to load email logs store from disk:", err);
-  }
-}
-
-function persistStore() {
-  try {
-    fs.writeFileSync(EMAIL_STORE_FILE, JSON.stringify(inMemoryStore, null, 2), "utf-8");
-    if (fs.existsSync(EMAIL_STORE_FILE)) {
-      lastLoadedMtime = fs.statSync(EMAIL_STORE_FILE).mtimeMs;
-    }
-  } catch (err) {
-    console.error("Failed to persist email logs store:", err);
-  }
-}
-
 /**
- * Mutation testing flag: temporarily disables unique constraint check
- * to prove that replaying without unique constraint causes duplicate deliveries.
+ * Email log repository (public.email_logs). A partial unique index guarantees at
+ * most one SENT row per idempotency key, which backs the exactly-once guarantee.
  */
-export function setUniqueConstraintDisabled(disabled: boolean): void {
-  uniqueConstraintDisabled = disabled;
+
+interface EmailLogRow {
+  id: string;
+  idempotency_key: string;
+  order_ref: string;
+  event: EmailLogRecord["event"];
+  recipient: string;
+  recipient_name: string;
+  subject: string;
+  body_text: string;
+  body_html: string;
+  status: EmailLogRecord["status"];
+  provider: string;
+  provider_message_id: string | null;
+  error: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
 }
 
-export function isUniqueConstraintDisabled(): boolean {
-  return uniqueConstraintDisabled;
-}
-
-/**
- * Checks whether an email with this idempotency key has already been successfully dispatched.
- * Exact-once guarantee backed by DB unique constraint (PRD § 13).
- */
-export function hasSuccessfulSend(idempotencyKey: string): boolean {
-  if (uniqueConstraintDisabled) {
-    return false;
-  }
-  loadStore();
-  return inMemoryStore.logs.some(
-    (log) => log.idempotency_key === idempotencyKey && log.status === "sent"
-  );
-}
-
-/**
- * Records an email dispatch attempt into the email_log table.
- * Strictly enforces UNIQUE (idempotency_key) constraint unless mutation toggle is active.
- */
-export function recordEmailLog(
-  entry: Omit<EmailLogRecord, "id" | "created_at">
-): EmailLogRecord {
-  loadStore();
-
-  // Enforce DB UNIQUE(idempotency_key) constraint on successfully sent records
-  if (!uniqueConstraintDisabled && entry.status === "sent") {
-    const existingSent = inMemoryStore.logs.find(
-      (l) => l.idempotency_key === entry.idempotency_key && l.status === "sent"
-    );
-    if (existingSent) {
-      throw new Error(
-        `UNIQUE constraint failed: email_log.idempotency_key (${entry.idempotency_key})`
-      );
-    }
-  }
-
-  const record: EmailLogRecord = {
-    id: `eml-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`,
-    ...entry,
-    created_at: new Date().toISOString(),
+function toRecord(row: EmailLogRow): EmailLogRecord {
+  return {
+    id: row.id,
+    idempotency_key: row.idempotency_key,
+    order_id: row.order_ref,
+    event: row.event,
+    recipient: row.recipient,
+    recipient_name: row.recipient_name,
+    subject: row.subject,
+    body_text: row.body_text,
+    body_html: row.body_html,
+    status: row.status,
+    provider: row.provider,
+    provider_message_id: row.provider_message_id ?? undefined,
+    error: row.error ?? undefined,
+    metadata: row.metadata,
+    created_at: row.created_at,
   };
-
-  inMemoryStore.logs.push(record);
-  persistStore();
-  return record;
 }
 
-/**
- * Retrieves email logs filtered by orderId, recipient, or event.
- */
-export function getEmailLogs(options?: {
+/** True when an email with this idempotency key has already been sent. */
+export async function hasSuccessfulSend(idempotencyKey: string): Promise<boolean> {
+  const { count, error } = await db()
+    .from("email_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("idempotency_key", idempotencyKey)
+    .eq("status", "sent");
+  if (error) throw new Error(`Check email log: ${error.message}`);
+  return (count ?? 0) > 0;
+}
+
+/** Records a dispatch attempt. Throws on a duplicate SENT row (unique index). */
+export async function recordEmailLog(entry: Omit<EmailLogRecord, "id" | "created_at">): Promise<EmailLogRecord> {
+  const row = unwrap(
+    await db()
+      .from("email_logs")
+      .insert({
+        idempotency_key: entry.idempotency_key,
+        order_ref: entry.order_id,
+        event: entry.event,
+        recipient: entry.recipient,
+        recipient_name: entry.recipient_name,
+        subject: entry.subject,
+        body_text: entry.body_text,
+        body_html: entry.body_html,
+        status: entry.status,
+        provider: entry.provider,
+        provider_message_id: entry.provider_message_id ?? null,
+        error: entry.error ?? null,
+        metadata: entry.metadata ?? {},
+      })
+      .select("*")
+      .single(),
+    "Record email log"
+  );
+  return toRecord(row as EmailLogRow);
+}
+
+export async function getEmailLogs(options?: {
   orderId?: string;
   recipient?: string;
   event?: string;
-}): EmailLogRecord[] {
-  loadStore();
-  let list = [...inMemoryStore.logs];
-
-  if (options?.orderId) {
-    list = list.filter((l) => l.order_id === options.orderId);
-  }
-  if (options?.recipient) {
-    const r = options.recipient.toLowerCase().trim();
-    list = list.filter((l) => l.recipient.toLowerCase().trim() === r);
-  }
-  if (options?.event) {
-    list = list.filter((l) => l.event === options.event);
-  }
-
-  return list;
-}
-
-/**
- * Clears email logs store (for test suite cleanup).
- */
-export function resetEmailStore(): void {
-  inMemoryStore = { logs: [] };
-  uniqueConstraintDisabled = false;
-  try {
-    if (fs.existsSync(EMAIL_STORE_FILE)) {
-      fs.unlinkSync(EMAIL_STORE_FILE);
-    }
-  } catch {
-    // Ignore error on delete
-  }
-  lastLoadedMtime = 0;
+  limit?: number;
+}): Promise<EmailLogRecord[]> {
+  let query = db().from("email_logs").select("*").order("created_at", { ascending: false });
+  if (options?.orderId) query = query.eq("order_ref", options.orderId);
+  if (options?.recipient) query = query.eq("recipient", options.recipient.toLowerCase().trim());
+  if (options?.event) query = query.eq("event", options.event);
+  query = query.limit(options?.limit ?? 200);
+  const rows = unwrap(await query, "Load email logs");
+  return (rows as EmailLogRow[]).map(toRecord);
 }

@@ -8,7 +8,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
@@ -22,7 +22,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Target stage is required." }, { status: 400 });
     }
 
-    const result = updateOrderStageWithVersion(
+    const result = await updateOrderStageWithVersion(
       id,
       stage as PipelineStage,
       expectedStage as PipelineStage | undefined,
@@ -46,14 +46,14 @@ export async function PATCH(
     }
 
     // Log admin audit
-    logAdminAction(
+    await logAdminAction(
       auth.user!.id,
       auth.user!.email,
       "pipeline_stage_change",
       "order",
       result.order.order_number,
       {
-        from: expectedStage || "UNKNOWN",
+        from: result.fromStage,
         to: stage,
         notes,
       }

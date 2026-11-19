@@ -8,7 +8,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
     if (!sessionUser) {
       return NextResponse.json(
         { error: "Unauthorized: Valid session required" },
@@ -16,7 +16,7 @@ export async function GET(
       );
     }
 
-    const design = getSavedDesignById(id);
+    const design = await getSavedDesignById(id);
     if (!design) {
       return NextResponse.json({ error: "Saved design not found" }, { status: 404 });
     }
@@ -41,7 +41,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
     if (!sessionUser) {
       return NextResponse.json(
         { error: "Unauthorized: Valid session required" },
@@ -49,7 +49,7 @@ export async function DELETE(
       );
     }
 
-    const deleted = deleteSavedDesign(id, sessionUser.id);
+    const deleted = await deleteSavedDesign(id, sessionUser.id);
     if (!deleted) {
       return NextResponse.json(
         { error: "Design not found or not owned by you" },

@@ -1,12 +1,13 @@
-import { dataFile } from "../../lib/data-dir";
-import fs from "fs";
 import crypto from "crypto";
-import { Order, PipelineStage } from "@/types/database";
-import { INITIAL_ORDERS } from "@/lib/data/mock-data";
+import { db, unwrap } from "@/lib/supabase/server";
+import { Order, OrderItem, PipelineStage, DivisionSlug } from "@/types/database";
 import { safeSendNotificationEmail } from "@/modules/email/email-service";
 
-const ORDERS_STORE_FILE = dataFile(".orders-store.json");
-const SIGNED_URL_SECRET = process.env.SIGNED_URL_SECRET || "w2p-signed-production-secret-2026";
+/**
+ * Orders repository (public.orders + order_items + order_events).
+ * Money columns are paise; they are exposed on the Order type as `*_cents`
+ * until the Phase 3 money/GST refactor renames the app-level fields.
+ */
 
 export interface StatusHistoryEntry {
   from: PipelineStage;
@@ -16,155 +17,258 @@ export interface StatusHistoryEntry {
   notes?: string;
 }
 
-export interface DispatchedEmailLog {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ORDER_COLUMNS = "*, order_items(*), order_events(*)";
+
+interface OrderItemRow {
   id: string;
-  recipient: string;
-  subject: string;
-  template: "status_update" | "order_completed" | "proof_ready";
-  orderNumber: string;
-  pipelineStage: PipelineStage;
-  dispatchedAt: string;
+  order_id: string;
+  product_id: string | null;
+  product_name: string;
+  division_slug: DivisionSlug;
+  width_mm: number | string;
+  height_mm: number | string;
+  material_id: string;
+  material_name: string;
+  quantity: number;
+  unit_price_paise: number;
+  line_subtotal_paise: number;
+  artwork_type: "designer" | "upload";
+  design_json: Record<string, unknown> | null;
+  uploaded_file_path: string | null;
+  created_at: string;
 }
 
-interface OrderStoreData {
-  orders: Record<string, Order>;
-  dispatchedEmails?: DispatchedEmailLog[];
+interface OrderRow {
+  id: string;
+  order_number: string;
+  customer_id: string;
+  customer_email: string;
+  customer_name: string;
+  draft_id: string | null;
+  division_slug: DivisionSlug | null;
+  pipeline_stage: PipelineStage;
+  payment_status: Order["payment_status"];
+  currency: string;
+  subtotal_paise: number;
+  tax_paise: number;
+  total_paise: number;
+  shipping_address: Order["shipping_address"];
+  approved_proof_version: number | null;
+  stripe_session_id: string | null;
+  xero_invoice: Order["xero_invoice_data"] | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  order_items?: OrderItemRow[];
+  order_events?: Array<{ from_stage: PipelineStage | null; to_stage: PipelineStage; changed_by: string; notes: string | null; created_at: string }>;
 }
 
-let inMemoryStore: OrderStoreData = { orders: {}, dispatchedEmails: [] };
-let lastLoadedMtime = 0;
-let isInitialized = false;
-
-function loadStore(): void {
-  try {
-    if (fs.existsSync(ORDERS_STORE_FILE)) {
-      const stats = fs.statSync(ORDERS_STORE_FILE);
-      if (!isInitialized || stats.mtimeMs > lastLoadedMtime) {
-        const raw = fs.readFileSync(ORDERS_STORE_FILE, "utf-8");
-        inMemoryStore = JSON.parse(raw);
-        if (!inMemoryStore.dispatchedEmails) {
-          inMemoryStore.dispatchedEmails = [];
-        }
-        lastLoadedMtime = stats.mtimeMs;
-        isInitialized = true;
-      }
-      return;
-    }
-  } catch (err) {
-    console.warn("Could not read orders store file, falling back to memory:", err);
-  }
-
-  // First time initialization: populate seed orders
-  if (!isInitialized) {
-    inMemoryStore = { orders: {}, dispatchedEmails: [] };
-    for (const o of INITIAL_ORDERS) {
-      inMemoryStore.orders[o.order_number] = {
-        ...o,
-        status_history: [
-          {
-            from: "QUOTE" as PipelineStage,
-            to: o.pipeline_stage,
-            changed_by: "system_seed",
-            timestamp: o.created_at,
-          },
-        ],
-      };
-    }
-    saveStore();
-    isInitialized = true;
-  }
+function toOrderItem(row: OrderItemRow): OrderItem {
+  return {
+    id: row.id,
+    order_id: row.order_id,
+    product_id: row.product_id ?? "",
+    product_name: row.product_name,
+    division_slug: row.division_slug,
+    width_mm: Number(row.width_mm),
+    height_mm: Number(row.height_mm),
+    material: row.material_name,
+    quantity: row.quantity,
+    unit_price_cents: row.unit_price_paise,
+    total_price_cents: row.line_subtotal_paise,
+    artwork_type: row.artwork_type === "upload" ? "direct_upload" : "in_browser_designer",
+    canvas_json: row.design_json,
+    uploaded_file_url: row.uploaded_file_path,
+    created_at: row.created_at,
+  };
 }
 
-function saveStore(): void {
-  try {
-    const json = JSON.stringify(inMemoryStore, null, 2);
-    fs.writeFileSync(ORDERS_STORE_FILE, json, "utf-8");
-    const stats = fs.statSync(ORDERS_STORE_FILE);
-    lastLoadedMtime = stats.mtimeMs;
-  } catch (err) {
-    console.warn("Could not write orders store file:", err);
-  }
+function toOrder(row: OrderRow): Order {
+  return {
+    id: row.id,
+    order_number: row.order_number,
+    customer_id: row.customer_id,
+    customer_email: row.customer_email,
+    customer_name: row.customer_name,
+    pipeline_stage: row.pipeline_stage,
+    payment_status: row.payment_status,
+    subtotal_cents: row.subtotal_paise,
+    tax_cents: row.tax_paise,
+    total_cents: row.total_paise,
+    currency: row.currency,
+    division_slug: row.division_slug ?? undefined,
+    items: (row.order_items ?? []).map(toOrderItem),
+    approved_proof_version: row.approved_proof_version ?? undefined,
+    proof_version: row.approved_proof_version ?? undefined,
+    status_history: [...(row.order_events ?? [])]
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((e) => ({
+        from: (e.from_stage ?? "QUOTE") as PipelineStage,
+        to: e.to_stage,
+        changed_by: e.changed_by,
+        timestamp: e.created_at,
+        notes: e.notes ?? undefined,
+      })),
+    shipping_address: row.shipping_address,
+    xero_invoice_data: row.xero_invoice ?? undefined,
+    notes: row.notes ?? undefined,
+    stripe_session_id: row.stripe_session_id ?? undefined,
+    draft_id: row.draft_id ?? undefined,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+/** Reserves the next order number from the database sequence (never random). */
+export async function reserveOrderNumber(): Promise<string> {
+  const value = unwrap(await db().rpc("next_order_number"), "Reserve order number");
+  return value as unknown as string;
+}
+
+export interface NewOrderItem {
+  product_id: string;
+  product_name: string;
+  division_slug: string;
+  hsn_code?: string | null;
+  width_mm: number;
+  height_mm: number;
+  material_id: string;
+  material_name: string;
+  quantity: number;
+  unit_price_cents: number;
+  total_price_cents: number;
+  gst_rate: number;
+  artwork_type: "designer" | "upload";
+  design_json?: Record<string, unknown> | null;
+  uploaded_file_path?: string | null;
 }
 
 /**
- * Creates or updates an order in the persistent database/store.
- * Enforces idempotency: if an order with the same order_number already exists, returns it without creating a duplicate.
+ * Persists an order. Idempotent on order_number and on stripe_session_id: a replay
+ * returns the existing order with isNew=false. An order must belong to a real
+ * customer account; there is no fallback owner.
  */
-export function createOrder(order: Order): { order: Order; isNew: boolean } {
-  loadStore();
-
-  // Check webhook idempotency by order_number
-  const existing = inMemoryStore.orders[order.order_number];
-  if (existing) {
-    return { order: existing, isNew: false };
+export async function createOrder(
+  order: Order,
+  items: NewOrderItem[] = []
+): Promise<{ order: Order; isNew: boolean }> {
+  if (!order.customer_id || !UUID_RE.test(order.customer_id)) {
+    throw new Error("An order must belong to a signed-in customer account.");
   }
 
-  // Check if any order has matching stripe_session_id
+  if (order.order_number) {
+    const existing = await getOrderById(order.order_number);
+    if (existing) return { order: existing, isNew: false };
+  }
   if (order.stripe_session_id) {
-    const existingStripe = Object.values(inMemoryStore.orders).find(
-      (o) => o.stripe_session_id === order.stripe_session_id
+    const existing = unwrap(
+      await db().from("orders").select("order_number").eq("stripe_session_id", order.stripe_session_id).maybeSingle(),
+      "Check Stripe session"
+    ) as { order_number: string } | null;
+    if (existing) return { order: (await getOrderById(existing.order_number))!, isNew: false };
+  }
+
+  const addr = order.shipping_address;
+  if (!addr?.line1 || !addr.city || !addr.postal_code || !addr.country) {
+    throw new Error("A complete shipping address is required.");
+  }
+
+  // Interim GST split until Phase 3: the seller is in Delhi and the place of
+  // supply is not captured yet, so tax is recorded as intra-state CGST + SGST.
+  const cgst = Math.floor(order.tax_cents / 2);
+  const sgst = order.tax_cents - cgst;
+
+  const inserted = unwrap(
+    await db()
+      .from("orders")
+      .insert({
+        ...(order.order_number ? { order_number: order.order_number } : {}),
+        customer_id: order.customer_id,
+        customer_email: order.customer_email ?? "",
+        customer_name: order.customer_name ?? "",
+        draft_id: order.draft_id && UUID_RE.test(order.draft_id) ? order.draft_id : null,
+        division_slug: order.division_slug ?? items[0]?.division_slug ?? null,
+        pipeline_stage: order.pipeline_stage || "ORDER",
+        payment_status: order.payment_status || "pending",
+        currency: order.currency || "INR",
+        subtotal_paise: order.subtotal_cents,
+        cgst_paise: cgst,
+        sgst_paise: sgst,
+        igst_paise: 0,
+        tax_paise: order.tax_cents,
+        total_paise: order.subtotal_cents + order.tax_cents,
+        shipping_address: {
+          name: (addr.name || order.customer_name || "").trim(),
+          line1: addr.line1.trim(),
+          line2: addr.line2?.trim() || undefined,
+          city: addr.city.trim(),
+          postal_code: addr.postal_code.trim().toUpperCase(),
+          country: addr.country.trim(),
+        },
+        approved_proof_version: order.approved_proof_version ?? order.proof_version ?? null,
+        stripe_session_id: order.stripe_session_id ?? null,
+        xero_invoice: order.xero_invoice_data ?? null,
+        notes: order.notes ?? null,
+      })
+      .select("id, order_number, pipeline_stage")
+      .single(),
+    "Create order"
+  ) as { id: string; order_number: string; pipeline_stage: PipelineStage };
+
+  if (items.length > 0) {
+    unwrap(
+      await db().from("order_items").insert(
+        items.map((it) => ({
+          order_id: inserted.id,
+          product_id: it.product_id,
+          product_name: it.product_name,
+          division_slug: it.division_slug,
+          hsn_code: it.hsn_code ?? null,
+          width_mm: it.width_mm,
+          height_mm: it.height_mm,
+          material_id: it.material_id,
+          material_name: it.material_name,
+          quantity: it.quantity,
+          unit_price_paise: it.unit_price_cents,
+          line_subtotal_paise: it.total_price_cents,
+          gst_rate: it.gst_rate,
+          artwork_type: it.artwork_type,
+          design_json: it.design_json ?? null,
+          uploaded_file_path: it.uploaded_file_path ?? null,
+        }))
+      ),
+      "Create order items"
     );
-    if (existingStripe) {
-      return { order: existingStripe, isNew: false };
-    }
   }
 
-  // Immutable address snapshot must have all required fields
-  const addr = order.shipping_address || {
-    name: order.customer_name || "Valued Customer",
-    line1: "Customer Address",
-    city: "City",
-    postal_code: "POSTCODE",
-    country: "GB",
-  };
-  const immutableAddress = {
-    name: (addr.name || order.customer_name || "Valued Customer").trim(),
-    line1: (addr.line1 || "Customer Address").trim(),
-    line2: addr.line2?.trim() || undefined,
-    city: (addr.city || "City").trim(),
-    postal_code: (addr.postal_code || "").trim().toUpperCase(),
-    country: (addr.country || "GB").trim(),
-  };
-
-  const initialHistory: StatusHistoryEntry[] = [
-    {
-      from: "QUOTE",
-      to: order.pipeline_stage || "ORDER",
+  unwrap(
+    await db().from("order_events").insert({
+      order_id: inserted.id,
+      from_stage: "QUOTE",
+      to_stage: inserted.pipeline_stage,
       changed_by: order.customer_email || "customer",
-      timestamp: order.created_at || new Date().toISOString(),
       notes: "Order placed and confirmed",
-    },
-  ];
+    }),
+    "Log order event"
+  );
 
-  const persistedOrder: Order = {
-    ...order,
-    shipping_address: immutableAddress,
-    status_history: order.status_history || initialHistory,
-    created_at: order.created_at || new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+  return { order: (await getOrderById(inserted.id))!, isNew: true };
+}
 
-  inMemoryStore.orders[persistedOrder.order_number] = persistedOrder;
-  saveStore();
-
-  return { order: persistedOrder, isNew: true };
+/** Retrieves an order by order number or id. */
+export async function getOrderById(idOrOrderNumber: string): Promise<Order | null> {
+  const column = UUID_RE.test(idOrOrderNumber) ? "id" : "order_number";
+  const row = unwrap(
+    await db().from("orders").select(ORDER_COLUMNS).eq(column, idOrOrderNumber).maybeSingle(),
+    "Load order"
+  );
+  return row ? toOrder(row as unknown as OrderRow) : null;
 }
 
 /**
- * Retrieve an order by order_number or id.
- */
-export function getOrderById(idOrOrderNumber: string): Order | null {
-  loadStore();
-  if (inMemoryStore.orders[idOrOrderNumber]) {
-    return inMemoryStore.orders[idOrOrderNumber];
-  }
-  const byId = Object.values(inMemoryStore.orders).find((o) => o.id === idOrOrderNumber);
-  return byId || null;
-}
-
-/**
- * Check Ready-for-Production Gate (PRD § 08, § 11, DECISIONS.md):
- * True ONLY if proof approved AND payment confirmed.
+ * Ready-for-production gate: true only when the proof is approved AND payment is confirmed.
+ * (Tightened in Phase 9 so that reaching PRODUCTION never implies approval.)
  */
 export function checkReadyForProduction(order: Order): {
   isReady: boolean;
@@ -177,67 +281,49 @@ export function checkReadyForProduction(order: Order): {
     !!order.approved_proof_version ||
     order.pipeline_stage === "PRODUCTION" ||
     order.pipeline_stage === "COMPLETED";
-
   const paymentConfirmed = order.payment_status === "paid";
   const isReady = proofApproved && paymentConfirmed;
 
   let reason: string | null = null;
   if (!isReady) {
-    if (!proofApproved && !paymentConfirmed) {
-      reason = "Proof not approved and payment not confirmed";
-    } else if (!proofApproved) {
-      reason = "Proof pending customer approval";
-    } else if (!paymentConfirmed) {
-      reason = `Payment not confirmed (Status: ${order.payment_status})`;
-    }
+    if (!proofApproved && !paymentConfirmed) reason = "Proof not approved and payment not confirmed";
+    else if (!proofApproved) reason = "Proof pending customer approval";
+    else reason = `Payment not confirmed (Status: ${order.payment_status})`;
   }
+  return { isReady, reason, proofApproved, paymentConfirmed };
+}
 
-  return {
-    isReady,
-    reason,
-    proofApproved,
-    paymentConfirmed,
-  };
+/** Orders visible to a user. Customers see only orders owned by their account id. */
+export async function getOrdersForUser(userId?: string | null, role: string = "customer"): Promise<Order[]> {
+  let query = db().from("orders").select(ORDER_COLUMNS).order("created_at", { ascending: false });
+  if (role !== "admin") {
+    if (!userId || !UUID_RE.test(userId)) return [];
+    query = query.eq("customer_id", userId);
+  }
+  const rows = unwrap(await query, "Load orders");
+  return (rows as unknown as OrderRow[]).map(toOrder);
+}
+
+export async function countOrdersByCustomer(): Promise<Record<string, number>> {
+  const rows = unwrap(await db().from("orders").select("customer_id"), "Count orders") as Array<{ customer_id: string }>;
+  const counts: Record<string, number> = {};
+  for (const r of rows) counts[r.customer_id] = (counts[r.customer_id] ?? 0) + 1;
+  return counts;
+}
+
+/** Inclusive end-of-day bound for a YYYY-MM-DD date filter. */
+function endOfDay(value: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
+}
+
+function escapeIlike(value: string): string {
+  return value.replace(/[%_,()\\]/g, (c) => `\\${c}`);
 }
 
 /**
- * Get orders filtered by user ID and role, enforcing Row-Level Security (PRD § 05, § 09, § 10).
+ * Admin search & combinable filters (PRD § 11 capability 01), paginated server-side, newest first.
  */
-export function getOrdersForUser(
-  userId?: string | null,
-  userEmail?: string | null,
-  role: string = "customer"
-): Order[] {
-  loadStore();
-  const all = Object.values(inMemoryStore.orders).sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
-
-  if (role === "admin") {
-    return all;
-  }
-
-  if (!userId && !userEmail) {
-    return [];
-  }
-
-  const normId = (id?: string | null) => (id ? id.replace("-0", "-").toLowerCase() : "");
-
-  return all.filter((o) => {
-    const matchesId = userId && normId(o.customer_id) === normId(userId);
-    const matchesEmail =
-      userEmail && o.customer_email?.toLowerCase() === userEmail.toLowerCase();
-    return matchesId || matchesEmail;
-  });
-}
-
-/**
- * Admin Search & Combinable Filters (PRD § 11 Capability 01):
- * Search by order_number, customer_name, customer_email.
- * Filter by status/stage, payment_status, customer, product_type (division), date range.
- * Paginated server-side, sorted newest first.
- */
-export function searchAdminOrders(options: {
+export async function searchAdminOrders(options: {
   query?: string;
   stage?: string;
   payment_status?: string;
@@ -247,157 +333,69 @@ export function searchAdminOrders(options: {
   date_to?: string;
   page?: number;
   limit?: number;
-}): {
+}): Promise<{
   orders: Array<Order & { isReadyForProduction: boolean; notReadyReason: string | null }>;
   total: number;
   page: number;
   limit: number;
   totalPages: number;
-} {
-  loadStore();
-
-  let list = Object.values(inMemoryStore.orders);
-
-  // Search query (order number, customer name, customer email)
-  if (options.query && options.query.trim()) {
-    const q = options.query.toLowerCase().trim();
-    list = list.filter(
-      (o) =>
-        o.order_number.toLowerCase().includes(q) ||
-        (o.customer_name ? o.customer_name.toLowerCase().includes(q) : false) ||
-        (o.customer_email ? o.customer_email.toLowerCase().includes(q) : false) ||
-        (o.id ? o.id.toLowerCase().includes(q) : false)
-    );
-  }
-
-  // Pipeline stage filter
-  if (options.stage && options.stage.trim()) {
-    const s = options.stage.trim().toUpperCase();
-    list = list.filter((o) => o.pipeline_stage === s);
-  }
-
-  // Payment status filter
-  if (options.payment_status && options.payment_status.trim()) {
-    const p = options.payment_status.trim().toLowerCase();
-    list = list.filter((o) => o.payment_status.toLowerCase() === p);
-  }
-
-  // Customer filter (id or email)
-  if (options.customer && options.customer.trim()) {
-    const c = options.customer.trim().toLowerCase();
-    list = list.filter(
-      (o) =>
-        (o.customer_id ? o.customer_id.toLowerCase().includes(c) : false) ||
-        (o.customer_email ? o.customer_email.toLowerCase().includes(c) : false) ||
-        (o.customer_name ? o.customer_name.toLowerCase().includes(c) : false)
-    );
-  }
-
-  // Product type (division_slug)
-  if (options.product_type && options.product_type.trim()) {
-    const pt = options.product_type.trim().toLowerCase();
-    list = list.filter(
-      (o) =>
-        (o.division_slug && o.division_slug.toLowerCase() === pt) ||
-        (o.items && o.items.some((item) => item.division_slug?.toLowerCase() === pt))
-    );
-  }
-
-  // Date range filters
-  if (options.date_from) {
-    const fromTime = new Date(options.date_from).getTime();
-    if (!isNaN(fromTime)) {
-      list = list.filter((o) => new Date(o.created_at).getTime() >= fromTime);
-    }
-  }
-  if (options.date_to) {
-    const toTime = new Date(options.date_to).getTime();
-    if (!isNaN(toTime)) {
-      list = list.filter((o) => new Date(o.created_at).getTime() <= toTime);
-    }
-  }
-
-  // Sort newest first
-  list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-  const total = list.length;
-  const page = Math.max(1, options.page || 1);
-  const limit = Math.min(100, Math.max(1, options.limit || 20));
-  const totalPages = Math.ceil(total / limit) || 1;
+}> {
+  const page = Math.max(1, Number(options.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
   const offset = (page - 1) * limit;
 
-  const paginated = list.slice(offset, offset + limit).map((o) => {
-    const gate = checkReadyForProduction(o);
-    // Sanitize: do not leak raw payment secrets or private hashes
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- intentionally omitted from list responses
-    const { xero_invoice_data, ...rest } = o as any;
-    return {
-      ...rest,
-      isReadyForProduction: gate.isReady,
-      notReadyReason: gate.reason,
-    };
+  let query = db().from("orders").select(ORDER_COLUMNS, { count: "exact" });
+
+  if (options.query?.trim()) {
+    const q = escapeIlike(options.query.trim());
+    query = query.or(`order_number.ilike.%${q}%,customer_name.ilike.%${q}%,customer_email.ilike.%${q}%`);
+  }
+  if (options.stage?.trim()) query = query.eq("pipeline_stage", options.stage.trim().toUpperCase());
+  if (options.payment_status?.trim()) query = query.eq("payment_status", options.payment_status.trim().toLowerCase());
+  if (options.customer?.trim()) {
+    const c = escapeIlike(options.customer.trim());
+    query = query.or(`customer_email.ilike.%${c}%,customer_name.ilike.%${c}%`);
+  }
+  if (options.product_type?.trim()) query = query.eq("division_slug", options.product_type.trim().toLowerCase());
+  if (options.date_from && !isNaN(Date.parse(options.date_from))) query = query.gte("created_at", options.date_from);
+  if (options.date_to && !isNaN(Date.parse(options.date_to))) query = query.lte("created_at", endOfDay(options.date_to));
+
+  const { data, count, error } = await query.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+  if (error) throw new Error(`Search orders: ${error.message}`);
+
+  const orders = ((data ?? []) as unknown as OrderRow[]).map((row) => {
+    const order = toOrder(row);
+    const gate = checkReadyForProduction(order);
+    // Accounting payloads are not needed in list views.
+    const { xero_invoice_data: _omit, ...rest } = order; // eslint-disable-line @typescript-eslint/no-unused-vars
+    return { ...rest, isReadyForProduction: gate.isReady, notReadyReason: gate.reason };
   });
 
-  return {
-    orders: paginated,
-    total,
-    page,
-    limit,
-    totalPages,
-  };
+  const total = count ?? 0;
+  return { orders, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
 }
 
-/**
- * Pipeline Transition Sequence (PRD § 11 & § 13):
- * Exactly: QUOTE -> ORDER -> ARTWORK -> PROOF -> PRODUCTION -> COMPLETED
- */
-const PIPELINE_SEQUENCE: PipelineStage[] = [
-  "QUOTE",
-  "ORDER",
-  "ARTWORK",
-  "PROOF",
-  "PRODUCTION",
-  "COMPLETED",
-];
+/** Pipeline sequence (PRD § 11): QUOTE → ORDER → ARTWORK → PROOF → PRODUCTION → COMPLETED. */
+const PIPELINE_SEQUENCE: PipelineStage[] = ["QUOTE", "ORDER", "ARTWORK", "PROOF", "PRODUCTION", "COMPLETED"];
 
-export function validateStageTransition(
-  current: PipelineStage,
-  target: PipelineStage
-): { valid: boolean; error?: string } {
-  if (current === target) {
-    return { valid: true };
-  }
+export function validateStageTransition(current: PipelineStage, target: PipelineStage): { valid: boolean; error?: string } {
+  if (current === target) return { valid: true };
 
   const currentIndex = PIPELINE_SEQUENCE.indexOf(current);
   const targetIndex = PIPELINE_SEQUENCE.indexOf(target);
-
   if (currentIndex === -1 || targetIndex === -1) {
     return { valid: false, error: `Invalid pipeline stage: ${target}` };
   }
+  if (targetIndex === currentIndex + 1) return { valid: true };
+  if (current === "PROOF" && target === "ARTWORK") return { valid: true };
+  if (current === "ARTWORK" && target === "ORDER") return { valid: true };
 
-  // Forward one stage at a time: strictly currentIndex + 1
-  if (targetIndex === currentIndex + 1) {
-    return { valid: true };
-  }
-
-  // Allowed backward steps:
-  // 1. PROOF back to ARTWORK (customer requested changes or artwork rejected)
-  if (current === "PROOF" && target === "ARTWORK") {
-    return { valid: true };
-  }
-  // 2. ARTWORK back to ORDER (file issue or customer request)
-  if (current === "ARTWORK" && target === "ORDER") {
-    return { valid: true };
-  }
-
-  // Skipping forward or arbitrary backward transitions are rejected
   if (targetIndex > currentIndex + 1) {
     return {
       valid: false,
       error: `Stage skipping is not allowed. Cannot transition directly from ${current} to ${target}. Must proceed sequentially: ${PIPELINE_SEQUENCE.slice(currentIndex, targetIndex + 1).join(" -> ")}.`,
     };
   }
-
   return {
     valid: false,
     error: `Illegal backward transition from ${current} to ${target}. Only PROOF -> ARTWORK and ARTWORK -> ORDER are permitted for pre-press revisions.`,
@@ -405,224 +403,155 @@ export function validateStageTransition(
 }
 
 /**
- * Update pipeline stage with optimistic locking and customer notification (PRD § 11, § 13).
+ * Moves an order to a new pipeline stage with optimistic locking (the update only
+ * applies if the stage has not changed since it was read) and notifies the customer.
  */
-export function updateOrderStageWithVersion(
+export async function updateOrderStageWithVersion(
   orderNumberOrId: string,
   newStage: PipelineStage,
   expectedStage?: PipelineStage,
-  adminEmail: string = "admin@w2p.co.in",
+  actorEmail: string = "system",
   notes?: string
-): {
-  success: boolean;
-  order?: Order;
-  conflict?: boolean;
-  error?: string;
-  emailSent?: boolean;
-} {
-  loadStore();
+): Promise<{ success: boolean; order?: Order; conflict?: boolean; error?: string; emailSent?: boolean; fromStage?: PipelineStage }> {
+  const existing = await getOrderById(orderNumberOrId);
+  if (!existing) return { success: false, error: `Order '${orderNumberOrId}' not found.` };
 
-  const existing = getOrderById(orderNumberOrId);
-  if (!existing) {
-    return { success: false, error: `Order '${orderNumberOrId}' not found.` };
-  }
-
-  // Optimistic locking / version check:
   if (expectedStage && existing.pipeline_stage !== expectedStage) {
     return {
       success: false,
       conflict: true,
+      order: existing,
       error: `Stale order stage conflict. Expected '${expectedStage}' but current stage is '${existing.pipeline_stage}'. Please refresh.`,
     };
   }
 
-  // Transition validation
   const transition = validateStageTransition(existing.pipeline_stage, newStage);
-  if (!transition.valid) {
-    return { success: false, error: transition.error };
-  }
+  if (!transition.valid) return { success: false, error: transition.error };
 
   const fromStage = existing.pipeline_stage;
-  existing.pipeline_stage = newStage;
-  existing.updated_at = new Date().toISOString();
+  const updated = unwrap(
+    await db()
+      .from("orders")
+      .update({ pipeline_stage: newStage })
+      .eq("id", existing.id)
+      .eq("pipeline_stage", fromStage)
+      .select("id"),
+    "Update stage"
+  ) as Array<{ id: string }>;
 
-  // Append to status history
-  if (!existing.status_history) {
-    existing.status_history = [];
+  if (updated.length === 0) {
+    return { success: false, conflict: true, error: "The order changed while you were editing it. Please refresh." };
   }
-  existing.status_history.push({
-    from: fromStage,
-    to: newStage,
-    changed_by: adminEmail,
-    timestamp: new Date().toISOString(),
-    notes: notes || undefined,
-  });
 
-  // Customer notification email dispatch (PRD § 13)
-  const emailLog: DispatchedEmailLog = {
-    id: `email-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    recipient: existing.customer_email || "customer@example.com",
-    subject:
-      newStage === "COMPLETED"
-        ? `Order Completed & Dispatched: ${existing.order_number}`
-        : `Order Update: ${existing.order_number} is now in ${newStage}`,
-    template: newStage === "COMPLETED" ? "order_completed" : "status_update",
-    orderNumber: existing.order_number,
-    pipelineStage: newStage,
-    dispatchedAt: new Date().toISOString(),
-  };
+  unwrap(
+    await db().from("order_events").insert({
+      order_id: existing.id,
+      from_stage: fromStage,
+      to_stage: newStage,
+      changed_by: actorEmail,
+      notes: notes ?? null,
+    }),
+    "Log stage change"
+  );
 
-  if (!inMemoryStore.dispatchedEmails) {
-    inMemoryStore.dispatchedEmails = [];
-  }
-  inMemoryStore.dispatchedEmails.push(emailLog);
-
-  // Dispatch exact-once server email asynchronously without blocking transaction
-  const notificationEvent = newStage === "COMPLETED" ? "order_completed" : "pipeline_status_changed";
-  safeSendNotificationEmail({
-    to: existing.customer_email || "customer@example.com",
-    recipientName: existing.customer_name || "Valued Customer",
-    event: notificationEvent,
+  await safeSendNotificationEmail({
+    to: existing.customer_email || "",
+    recipientName: existing.customer_name || "Customer",
+    event: newStage === "COMPLETED" ? "order_completed" : "pipeline_status_changed",
     orderId: existing.id,
     orderNumber: existing.order_number,
     stage: newStage,
     shippingAddress: existing.shipping_address,
   }).catch((err) => console.error("[OrderStore] Failed to send stage notification email:", err));
 
-  saveStore();
-
-  return {
-    success: true,
-    order: existing,
-    emailSent: true,
-  };
+  return { success: true, order: (await getOrderById(existing.id))!, emailSent: true, fromStage };
 }
 
-export function getDispatchedEmails(orderNumber?: string): DispatchedEmailLog[] {
-  loadStore();
-  const list = inMemoryStore.dispatchedEmails || [];
-  if (orderNumber) {
-    return list.filter((e) => e.orderNumber === orderNumber);
-  }
-  return list;
+/** Marks an order paid (used by payment confirmation). */
+export async function markOrderPaid(orderId: string, details: { stripeSessionId?: string; paymentIntentId?: string } = {}): Promise<void> {
+  unwrap(
+    await db()
+      .from("orders")
+      .update({
+        payment_status: "paid",
+        ...(details.stripeSessionId ? { stripe_session_id: details.stripeSessionId } : {}),
+        ...(details.paymentIntentId ? { stripe_payment_intent_id: details.paymentIntentId } : {}),
+      })
+      .eq("id", orderId),
+    "Mark order paid"
+  );
 }
 
-/**
- * Short-Lived Signed Download URLs for Production Files (PRD § 11, § 13):
- * 60-second HMAC token with expiration timestamp.
- */
-export function generateSignedDownloadToken(orderNumber: string, expiresInSeconds: number = 60): {
-  token: string;
-  expires: number;
-} {
+function signingSecret(): string {
+  const secret = process.env.SIGNED_URL_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!secret) throw new Error("SIGNED_URL_SECRET (or SUPABASE_SERVICE_ROLE_KEY) must be set to sign download links.");
+  return crypto.createHash("sha256").update(`download-links:${secret}`).digest("hex");
+}
+
+/** Short-lived (default 60 s) HMAC token for production file downloads. */
+export function generateSignedDownloadToken(orderNumber: string, expiresInSeconds: number = 60): { token: string; expires: number } {
   const expires = Math.floor(Date.now() / 1000) + expiresInSeconds;
-  const payload = `${orderNumber}:${expires}`;
-  const hmac = crypto.createHmac("sha256", SIGNED_URL_SECRET).update(payload).digest("hex");
-  const token = `${hmac}.${expires}`;
-  return { token, expires };
+  const hmac = crypto.createHmac("sha256", signingSecret()).update(`${orderNumber}:${expires}`).digest("hex");
+  return { token: `${hmac}.${expires}`, expires };
 }
 
 export function verifySignedDownloadToken(orderNumber: string, token: string): boolean {
   if (!token) return false;
   const parts = token.split(".");
-  if (parts.length !== 2) return false;
-  const [hmac, expiresStr] = parts;
+  if (parts.length !== 2 || !/^\d+$/.test(parts[1])) return false;
 
-  // Enforce strictly digits for expires
-  if (!/^\d+$/.test(expiresStr)) {
-    return false;
-  }
+  const expires = parseInt(parts[1], 10);
+  if (Math.floor(Date.now() / 1000) > expires) return false;
 
-  const expires = parseInt(expiresStr, 10);
-
-  if (isNaN(expires) || Math.floor(Date.now() / 1000) > expires) {
-    return false; // Expired
-  }
-
-  const expectedPayload = `${orderNumber}:${expires}`;
-  const expectedHmac = crypto.createHmac("sha256", SIGNED_URL_SECRET).update(expectedPayload).digest("hex");
-
-  const bufA = Buffer.from(hmac);
-  const bufB = Buffer.from(expectedHmac);
-  if (bufA.length !== bufB.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(bufA, bufB);
+  const expected = crypto.createHmac("sha256", signingSecret()).update(`${orderNumber}:${expires}`).digest("hex");
+  const a = Buffer.from(parts[0]);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-/**
- * Admin Reports & Analytics Aggregation (PRD § 11 Capability 05):
- * Revenue calculated strictly on confirmed payments ('paid').
- * Excludes pending, failed, cancelled.
- */
-export function getAdminReportsData(dateFrom?: string, dateTo?: string) {
-  loadStore();
+/** Admin reports (PRD § 11 capability 05). Revenue counts confirmed payments only. */
+export async function getAdminReportsData(dateFrom?: string, dateTo?: string) {
+  let query = db().from("orders").select("pipeline_stage, payment_status, total_paise, division_slug, created_at, order_items(quantity)");
+  if (dateFrom && !isNaN(Date.parse(dateFrom))) query = query.gte("created_at", dateFrom);
+  if (dateTo && !isNaN(Date.parse(dateTo))) query = query.lte("created_at", endOfDay(dateTo));
+  const rows = unwrap(await query, "Load report data") as Array<{
+    pipeline_stage: PipelineStage;
+    payment_status: string;
+    total_paise: number;
+    division_slug: string | null;
+    order_items: Array<{ quantity: number }>;
+  }>;
 
-  let orders = Object.values(inMemoryStore.orders);
-
-  if (dateFrom) {
-    const f = new Date(dateFrom).getTime();
-    if (!isNaN(f)) orders = orders.filter((o) => new Date(o.created_at).getTime() >= f);
-  }
-  if (dateTo) {
-    const t = new Date(dateTo).getTime();
-    if (!isNaN(t)) orders = orders.filter((o) => new Date(o.created_at).getTime() <= t);
-  }
-
+  const stageCounts: Record<PipelineStage, number> = { QUOTE: 0, ORDER: 0, ARTWORK: 0, PROOF: 0, PRODUCTION: 0, COMPLETED: 0 };
+  const divisionThroughput: Record<string, { count: number; totalQuantity: number; revenueCents: number }> = {};
   let confirmedRevenueCents = 0;
-  const totalOrders = orders.length;
   let paidCount = 0;
   let pendingCount = 0;
   let cancelledCount = 0;
   let failedCount = 0;
 
-  const stageCounts: Record<PipelineStage, number> = {
-    QUOTE: 0,
-    ORDER: 0,
-    ARTWORK: 0,
-    PROOF: 0,
-    PRODUCTION: 0,
-    COMPLETED: 0,
-  };
-
-  const divisionThroughput: Record<string, { count: number; totalQuantity: number; revenueCents: number }> = {};
-
-  for (const o of orders) {
-    if (stageCounts[o.pipeline_stage] !== undefined) {
-      stageCounts[o.pipeline_stage]++;
-    }
-
-    if (o.payment_status === "paid") {
-      confirmedRevenueCents += o.total_cents;
+  for (const o of rows) {
+    stageCounts[o.pipeline_stage] = (stageCounts[o.pipeline_stage] ?? 0) + 1;
+    const isPaid = o.payment_status === "paid";
+    if (isPaid) {
+      confirmedRevenueCents += o.total_paise;
       paidCount++;
-    } else if (o.payment_status === "pending_payment" || (o.payment_status as string) === "pending") {
-      pendingCount++;
-    } else if (o.payment_status === "cancelled") {
-      cancelledCount++;
-    } else if (o.payment_status === "failed") {
-      failedCount++;
-    }
+    } else if (o.payment_status === "pending") pendingCount++;
+    else if (o.payment_status === "cancelled") cancelledCount++;
+    else if (o.payment_status === "failed") failedCount++;
 
-    const divSlug = o.division_slug || "labels-stickers";
-    if (!divisionThroughput[divSlug]) {
-      divisionThroughput[divSlug] = { count: 0, totalQuantity: 0, revenueCents: 0 };
-    }
-    divisionThroughput[divSlug].count++;
-    const totalQty = (o.items || []).reduce((acc, it) => acc + (it.quantity || 1), 0);
-    divisionThroughput[divSlug].totalQuantity += totalQty;
-    if (o.payment_status === "paid") {
-      divisionThroughput[divSlug].revenueCents += o.total_cents;
-    }
+    const division = o.division_slug || "unassigned";
+    const bucket = (divisionThroughput[division] ??= { count: 0, totalQuantity: 0, revenueCents: 0 });
+    bucket.count++;
+    bucket.totalQuantity += (o.order_items ?? []).reduce((sum, it) => sum + it.quantity, 0);
+    if (isPaid) bucket.revenueCents += o.total_paise;
   }
 
   return {
-    currency: "GBP",
+    currency: "INR",
     confirmedRevenueCents,
-    confirmedRevenueFormatted: new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(
-      confirmedRevenueCents / 100
-    ),
-    totalOrders,
+    confirmedRevenueFormatted: new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(confirmedRevenueCents / 100),
+    totalOrders: rows.length,
     paidCount,
     pendingCount,
     cancelledCount,
@@ -632,44 +561,13 @@ export function getAdminReportsData(dateFrom?: string, dateTo?: string) {
   };
 }
 
-/**
- * Archive Retrieval (PRD § 11 Capability 04):
- * Completed orders move to archive view; searchable by customer, date, product type.
- * Artwork and files remain retrievable.
- */
-export function getArchivedOrders(options: {
+/** Archive (PRD § 11 capability 06): completed orders, searchable, files remain retrievable. */
+export async function getArchivedOrders(options: {
   query?: string;
   customer?: string;
   product_type?: string;
   date_from?: string;
   date_to?: string;
 }) {
-  const allCompleted = searchAdminOrders({
-    ...options,
-    stage: "COMPLETED",
-    limit: 100,
-  });
-
-  return allCompleted;
-}
-
-/**
- * Reset orders store to initial seed state.
- */
-export function resetOrderStore(): void {
-  inMemoryStore = { orders: {}, dispatchedEmails: [] };
-  for (const o of INITIAL_ORDERS) {
-    inMemoryStore.orders[o.order_number] = {
-      ...o,
-      status_history: [
-        {
-          from: "QUOTE" as PipelineStage,
-          to: o.pipeline_stage,
-          changed_by: "system_seed",
-          timestamp: o.created_at,
-        },
-      ],
-    };
-  }
-  saveStore();
+  return searchAdminOrders({ ...options, stage: "COMPLETED", limit: 100 });
 }

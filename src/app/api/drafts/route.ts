@@ -25,8 +25,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const draft = createDraft(validated.data);
-    const pricing = calculateDraftPrice(draft);
+    const draft = await createDraft(validated.data);
+    const pricing = await calculateDraftPrice(draft);
 
     return NextResponse.json({ draft, pricing }, { status: 201 });
   } catch (err: unknown) {

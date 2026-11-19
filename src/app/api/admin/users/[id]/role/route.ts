@@ -8,7 +8,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
@@ -25,13 +25,13 @@ export async function PATCH(
       );
     }
 
-    const result = updateUserRole(auth.user!.id, id, role as UserRole);
+    const result = await updateUserRole(auth.user!.id, id, role as UserRole);
 
     if (!result.success || !result.user) {
       return NextResponse.json({ error: result.error || "Role update failed" }, { status: 400 });
     }
 
-    logAdminAction(
+    await logAdminAction(
       auth.user!.id,
       auth.user!.email,
       "user_role_change",

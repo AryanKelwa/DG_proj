@@ -1,52 +1,18 @@
-import { dataFile } from "../../lib/data-dir";
-import fs from "fs";
 import crypto from "crypto";
-import { JobDraft, DraftStatus, DraftAuditLogEntry, DraftProofRecord } from "@/types/draft";
-import { PRODUCTS } from "@/lib/data/mock-data";
+import { db, unwrap } from "@/lib/supabase/server";
+import { JobDraft, DraftStatus, DraftAuditLogEntry, DraftProofRecord, DraftOptions } from "@/types/draft";
+import { DivisionSlug } from "@/types/database";
 import { calculatePrintPrice, PricingBreakdown } from "@/modules/pricing/pricing-engine";
 import { generateWatermarkedProofSvg } from "@/modules/proofs/proof-generator";
-
-const DRAFT_STORE_FILE = dataFile(".drafts-store.json");
-
-// In-memory cache synced with disk
-let draftsMap: Map<string, JobDraft> = new Map();
-let lastLoadedMtime = 0;
-
-function loadStore() {
-  try {
-    if (fs.existsSync(DRAFT_STORE_FILE)) {
-      const stat = fs.statSync(DRAFT_STORE_FILE);
-      if (stat.mtimeMs > lastLoadedMtime || draftsMap.size === 0) {
-        const data = fs.readFileSync(DRAFT_STORE_FILE, "utf-8");
-        const parsed = JSON.parse(data);
-        draftsMap = new Map(Object.entries(parsed));
-        lastLoadedMtime = stat.mtimeMs;
-      }
-    }
-  } catch (err) {
-    console.error("Failed to load drafts store:", err);
-  }
-}
-
-function persistStore() {
-  try {
-    const obj: Record<string, JobDraft> = {};
-    for (const [key, value] of draftsMap.entries()) {
-      obj[key] = value;
-    }
-    fs.writeFileSync(DRAFT_STORE_FILE, JSON.stringify(obj, null, 2), "utf-8");
-    if (fs.existsSync(DRAFT_STORE_FILE)) {
-      lastLoadedMtime = fs.statSync(DRAFT_STORE_FILE).mtimeMs;
-    }
-  } catch (err) {
-    console.error("Failed to persist drafts store:", err);
-  }
-}
+import { ExtendedProduct, getProductById } from "@/modules/catalog/catalog-store";
 
 /**
- * Valid state transitions for the customer journey (§ 01, § 03, § 05, § 06, § 08):
- * configured -> artwork_ready -> proof_pending -> proof_approved -> payment_pending -> paid
- * (change requested returns proof_pending with a new version; failed or abandoned payment returns to proof_approved)
+ * Job draft repository (public.drafts + draft_proofs + draft_events).
+ *
+ * Customer journey state machine:
+ *   configured → artwork_ready → proof_pending → proof_approved → payment_pending → paid
+ * A change request returns to proof_pending with a new version; a failed or
+ * abandoned payment returns to proof_approved.
  */
 const VALID_TRANSITIONS: Record<DraftStatus, DraftStatus[]> = {
   configured: ["artwork_ready"],
@@ -54,11 +20,127 @@ const VALID_TRANSITIONS: Record<DraftStatus, DraftStatus[]> = {
   proof_pending: ["proof_approved", "proof_pending", "artwork_ready"],
   proof_approved: ["payment_pending", "proof_pending"],
   payment_pending: ["paid", "proof_approved"],
-  paid: [], // Terminal state
+  paid: [],
 };
 
 export function canTransition(from: DraftStatus, to: DraftStatus): boolean {
   return VALID_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type Actor = { id: string; email: string };
+
+interface DraftRow {
+  id: string;
+  product_id: string;
+  customer_id: string | null;
+  customer_email: string | null;
+  status: DraftStatus;
+  options: DraftOptions;
+  quantity: number;
+  design_json: Record<string, unknown> | null;
+  uploaded_file_path: string | null;
+  csv_file_path: string | null;
+  proof_version: number;
+  order_id: string | null;
+  created_at: string;
+  updated_at: string;
+  products: { slug: string; name: string; divisions: { slug: DivisionSlug } | null } | null;
+  draft_proofs: Array<{
+    version: number;
+    status: string;
+    rendered_url: string;
+    sha256: string;
+    feedback: string | null;
+    approved_by_email: string | null;
+    approved_at: string | null;
+    created_at: string;
+  }>;
+  draft_events: Array<{
+    id: string;
+    actor_id: string;
+    actor_email: string;
+    from_status: DraftStatus | null;
+    to_status: DraftStatus | null;
+    action: string;
+    details: Record<string, unknown>;
+    created_at: string;
+  }>;
+}
+
+const DRAFT_COLUMNS =
+  "*, products(slug, name, divisions(slug)), draft_proofs(*), draft_events(*)";
+
+function toDraft(row: DraftRow): JobDraft {
+  const proofs: DraftProofRecord[] = [...(row.draft_proofs ?? [])]
+    .sort((a, b) => a.version - b.version)
+    .map((p) => ({
+      version: p.version,
+      renderedUrl: p.rendered_url,
+      sha256Hash: p.sha256,
+      createdAt: p.created_at,
+      approvedBy: p.approved_by_email,
+      approvedAt: p.approved_at,
+      feedback: p.feedback,
+    }));
+
+  const auditLog: DraftAuditLogEntry[] = [...(row.draft_events ?? [])]
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((e) => ({
+      id: e.id,
+      timestamp: e.created_at,
+      actorId: e.actor_id,
+      actorEmail: e.actor_email,
+      fromStatus: (e.from_status ?? row.status) as DraftStatus,
+      toStatus: (e.to_status ?? row.status) as DraftStatus,
+      action: e.action,
+      details: e.details,
+    }));
+
+  return {
+    id: row.id,
+    productId: row.product_id,
+    productSlug: row.products?.slug ?? "",
+    productName: row.products?.name ?? "",
+    divisionSlug: (row.products?.divisions?.slug ?? "labels-stickers") as DivisionSlug,
+    options: row.options,
+    quantity: row.quantity,
+    designJson: row.design_json,
+    uploadedFileRef: row.uploaded_file_path,
+    csvFileRef: row.csv_file_path,
+    proofVersion: row.proof_version,
+    proofs,
+    status: row.status,
+    customerId: row.customer_id,
+    customerEmail: row.customer_email,
+    orderId: row.order_id,
+    auditLog,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function logEvent(
+  draftId: string,
+  actor: Actor,
+  action: string,
+  fromStatus: DraftStatus | null,
+  toStatus: DraftStatus | null,
+  details: Record<string, unknown> = {}
+): Promise<void> {
+  unwrap(
+    await db().from("draft_events").insert({
+      draft_id: draftId,
+      actor_id: actor.id,
+      actor_email: actor.email,
+      from_status: fromStatus,
+      to_status: toStatus,
+      action,
+      details,
+    }),
+    "Log draft event"
+  );
 }
 
 export interface CreateDraftInput {
@@ -72,123 +154,131 @@ export interface CreateDraftInput {
   customerEmail?: string | null;
 }
 
-export function createDraft(input: CreateDraftInput): JobDraft {
-  loadStore();
-  const product = PRODUCTS.find((p) => p.id === input.productId || p.slug === input.productId) || PRODUCTS[0];
-  const now = new Date().toISOString();
-  const draftId = `dft_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+export async function createDraft(input: CreateDraftInput): Promise<JobDraft> {
+  const product = await getProductById(input.productId);
+  if (!product) {
+    throw new Error(`Product '${input.productId}' not found`);
+  }
 
-  const auditEntry: DraftAuditLogEntry = {
-    id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    timestamp: now,
-    actorId: input.customerId || "anonymous",
-    actorEmail: input.customerEmail || "anonymous@guest.local",
-    fromStatus: "configured",
-    toStatus: "configured",
-    action: "DRAFT_CREATED",
-    details: {
+  const row = unwrap(
+    await db()
+      .from("drafts")
+      .insert({
+        product_id: product.id,
+        customer_id: input.customerId || null,
+        customer_email: input.customerEmail || null,
+        status: "configured",
+        quantity: input.quantity,
+        options: {
+          widthMm: input.widthMm,
+          heightMm: input.heightMm,
+          materialId: input.materialId,
+          orientation: input.orientation || "landscape",
+          bleedMm: product.default_bleed_mm,
+          safetyMarginMm: product.default_safety_margin_mm,
+        },
+      })
+      .select("id")
+      .single(),
+    "Create draft"
+  ) as { id: string };
+
+  await logEvent(
+    row.id,
+    { id: input.customerId || "anonymous", email: input.customerEmail || "anonymous@guest.local" },
+    "DRAFT_CREATED",
+    "configured",
+    "configured",
+    {
       productId: product.id,
       dimensions: `${input.widthMm}x${input.heightMm}mm`,
       quantity: input.quantity,
       materialId: input.materialId,
-    },
-  };
+    }
+  );
 
-  const draft: JobDraft = {
-    id: draftId,
-    productId: product.id,
-    productSlug: product.slug,
-    productName: product.name,
-    divisionSlug: product.division_slug,
-    options: {
-      widthMm: input.widthMm,
-      heightMm: input.heightMm,
-      materialId: input.materialId,
-      orientation: input.orientation || "landscape",
-      bleedMm: product.default_bleed_mm,
-      safetyMarginMm: product.default_safety_margin_mm,
-    },
-    quantity: input.quantity,
-    designJson: null,
-    uploadedFileRef: null,
-    csvFileRef: null,
-    proofVersion: 1,
-    proofs: [],
-    status: "configured",
-    customerId: input.customerId || null,
-    customerEmail: input.customerEmail || null,
-    orderId: null,
-    auditLog: [auditEntry],
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  draftsMap.set(draftId, draft);
-  persistStore();
-  return draft;
+  return (await getDraft(row.id))!;
 }
 
-export function getDraft(draftId: string): JobDraft | null {
-  loadStore();
-  return draftsMap.get(draftId) || null;
+export async function getDraft(draftId: string): Promise<JobDraft | null> {
+  if (!UUID_RE.test(draftId)) return null;
+  const row = unwrap(
+    await db().from("drafts").select(DRAFT_COLUMNS).eq("id", draftId).maybeSingle(),
+    "Load draft"
+  );
+  return row ? toDraft(row as unknown as DraftRow) : null;
 }
 
-export function updateDraft(
+/** Maps JobDraft field updates onto draft columns. */
+function toDraftColumns(updates: Partial<JobDraft>): Record<string, unknown> {
+  const columns: Record<string, unknown> = {};
+  if (updates.status !== undefined) columns.status = updates.status;
+  if (updates.options !== undefined) columns.options = updates.options;
+  if (updates.quantity !== undefined) columns.quantity = updates.quantity;
+  if (updates.designJson !== undefined) columns.design_json = updates.designJson;
+  if (updates.uploadedFileRef !== undefined) columns.uploaded_file_path = updates.uploadedFileRef;
+  if (updates.csvFileRef !== undefined) columns.csv_file_path = updates.csvFileRef;
+  if (updates.proofVersion !== undefined) columns.proof_version = updates.proofVersion;
+  if (updates.customerId !== undefined) columns.customer_id = updates.customerId;
+  if (updates.customerEmail !== undefined) columns.customer_email = updates.customerEmail;
+  if (updates.orderId !== undefined) columns.order_id = updates.orderId;
+  return columns;
+}
+
+async function saveProofRecord(draftId: string, proof: DraftProofRecord): Promise<void> {
+  unwrap(
+    await db().from("draft_proofs").upsert(
+      {
+        draft_id: draftId,
+        version: proof.version,
+        rendered_url: proof.renderedUrl,
+        sha256: proof.sha256Hash,
+        feedback: proof.feedback ?? null,
+        approved_by_email: proof.approvedBy ?? null,
+        approved_at: proof.approvedAt ?? null,
+        status: proof.approvedAt ? "approved" : proof.feedback ? "changes_requested" : "pending_review",
+      },
+      { onConflict: "draft_id,version" }
+    ),
+    "Save proof"
+  );
+}
+
+export async function updateDraft(
   draftId: string,
   updates: Partial<JobDraft>,
-  actor: { id: string; email: string },
+  actor: Actor,
   actionLabel = "DRAFT_UPDATED"
-): JobDraft {
-  loadStore();
-  const draft = draftsMap.get(draftId);
-  if (!draft) {
-    throw new Error(`Draft ${draftId} not found`);
+): Promise<JobDraft> {
+  const draft = await getDraft(draftId);
+  if (!draft) throw new Error(`Draft ${draftId} not found`);
+
+  const columns = toDraftColumns(updates);
+  if (Object.keys(columns).length > 0) {
+    unwrap(await db().from("drafts").update(columns).eq("id", draftId), "Update draft");
+  }
+  await logEvent(draftId, actor, actionLabel, draft.status, updates.status ?? draft.status, {
+    updates: Object.keys(updates),
+  });
+
+  // Generate the first stored proof when the draft first reaches proof review.
+  if ((actionLabel === "PROOF_GENERATED" || updates.status === "proof_pending") && draft.proofs.length === 0) {
+    const updated = (await getDraft(draftId))!;
+    const proof = await generateDraftProof(updated, updated.proofVersion || 1);
+    await saveProofRecord(draftId, proof);
   }
 
-  const now = new Date().toISOString();
-  const auditEntry: DraftAuditLogEntry = {
-    id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    timestamp: now,
-    actorId: actor.id,
-    actorEmail: actor.email,
-    fromStatus: draft.status,
-    toStatus: updates.status || draft.status,
-    action: actionLabel,
-    details: { updates: Object.keys(updates) },
-  };
-
-  const updated: JobDraft = {
-    ...draft,
-    ...updates,
-    auditLog: [...draft.auditLog, auditEntry],
-    updatedAt: now,
-  };
-
-  // Issue 2: Generate initial stored proof if none exists upon proof generation
-  if (
-    (actionLabel === "PROOF_GENERATED" || updates.status === "proof_pending") &&
-    (!updated.proofs || updated.proofs.length === 0)
-  ) {
-    const initialProof = generateDraftProof(updated, updated.proofVersion || 1);
-    updated.proofs = [initialProof];
-  }
-
-  draftsMap.set(draftId, updated);
-  persistStore();
-  return updated;
+  return (await getDraft(draftId))!;
 }
 
-export function transitionDraftStatus(
+export async function transitionDraftStatus(
   draftId: string,
   newStatus: DraftStatus,
-  actor: { id: string; email: string },
+  actor: Actor,
   details?: Record<string, unknown>
-): JobDraft {
-  loadStore();
-  const draft = draftsMap.get(draftId);
-  if (!draft) {
-    throw new Error(`Draft ${draftId} not found`);
-  }
+): Promise<JobDraft> {
+  const draft = await getDraft(draftId);
+  if (!draft) throw new Error(`Draft ${draftId} not found`);
 
   if (draft.status !== newStatus && !canTransition(draft.status, newStatus)) {
     throw new Error(
@@ -196,231 +286,114 @@ export function transitionDraftStatus(
     );
   }
 
-  const now = new Date().toISOString();
-  const auditEntry: DraftAuditLogEntry = {
-    id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    timestamp: now,
-    actorId: actor.id,
-    actorEmail: actor.email,
-    fromStatus: draft.status,
-    toStatus: newStatus,
-    action: `STATUS_TRANSITION_${newStatus.toUpperCase()}`,
-    details,
-  };
+  // Compare-and-set on the current status so concurrent transitions cannot both win.
+  const updated = unwrap(
+    await db().from("drafts").update({ status: newStatus }).eq("id", draftId).eq("status", draft.status).select("id"),
+    "Transition draft"
+  ) as Array<{ id: string }>;
+  if (updated.length === 0) {
+    throw new Error(`Draft ${draftId} changed concurrently; please retry.`);
+  }
 
-  const updated: JobDraft = {
-    ...draft,
-    status: newStatus,
-    auditLog: [...draft.auditLog, auditEntry],
-    updatedAt: now,
-  };
-
-  draftsMap.set(draftId, updated);
-  persistStore();
-  return updated;
+  await logEvent(draftId, actor, `STATUS_TRANSITION_${newStatus.toUpperCase()}`, draft.status, newStatus, details);
+  return (await getDraft(draftId))!;
 }
 
-/**
- * Generate a server-rendered immutable proof for the draft (§ 06, § 08)
- */
-export function generateDraftProof(draft: JobDraft, version?: number): DraftProofRecord {
+/** Renders the stored, hashed proof for a draft version (§ 06, § 08). */
+export async function generateDraftProof(
+  draft: JobDraft,
+  version?: number,
+  productOverride?: ExtendedProduct
+): Promise<DraftProofRecord> {
   const currentVersion = version || draft.proofVersion || 1;
-  const product = PRODUCTS.find((p) => p.id === draft.productId || p.slug === draft.productId) || PRODUCTS[0];
-  const mat = product.allowed_materials.find((m) => m.id === draft.options.materialId) || product.allowed_materials[0];
+  const product = productOverride ?? (await getProductById(draft.productId));
+  const material =
+    product?.allowed_materials.find((m) => m.id === draft.options.materialId) ?? product?.allowed_materials[0];
 
   const svg = generateWatermarkedProofSvg({
     version: currentVersion,
     widthMm: draft.options.widthMm,
     heightMm: draft.options.heightMm,
-    materialName: mat.name,
+    materialName: material?.name ?? draft.options.materialId,
     bleedMm: draft.options.bleedMm,
     orderNumber: draft.id,
     createdAt: new Date().toISOString(),
   });
 
-  const sha256Hash = crypto.createHash("sha256").update(svg).digest("hex");
-  const renderedUrl = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-
   return {
     version: currentVersion,
-    renderedUrl,
-    sha256Hash,
+    renderedUrl: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+    sha256Hash: crypto.createHash("sha256").update(svg).digest("hex"),
     createdAt: new Date().toISOString(),
   };
 }
 
-/**
- * Task 4: Approve proof.
- * Validates state transition, records SHA-256 hash, timestamp, user ID.
- */
-export function approveDraftProof(
-  draftId: string,
-  actor: { id: string; email: string }
-): JobDraft {
-  loadStore();
-  const draft = draftsMap.get(draftId);
-  if (!draft) {
-    throw new Error(`Draft ${draftId} not found`);
-  }
+export async function approveDraftProof(draftId: string, actor: Actor): Promise<JobDraft> {
+  const draft = await getDraft(draftId);
+  if (!draft) throw new Error(`Draft ${draftId} not found`);
 
-  // Ensure proof exists or generate it
-  let activeProof = draft.proofs.find((p) => p.version === draft.proofVersion);
-  if (!activeProof) {
-    activeProof = generateDraftProof(draft, draft.proofVersion);
-  }
-
+  const activeProof =
+    draft.proofs.find((p) => p.version === draft.proofVersion) ?? (await generateDraftProof(draft, draft.proofVersion));
   const now = new Date().toISOString();
-  const approvedProofRecord: DraftProofRecord = {
-    ...activeProof,
+
+  await saveProofRecord(draftId, { ...activeProof, approvedBy: actor.email, approvedAt: now });
+  unwrap(await db().from("drafts").update({ status: "proof_approved" }).eq("id", draftId), "Approve proof");
+  await logEvent(draftId, actor, "PROOF_APPROVED", draft.status, "proof_approved", {
+    version: draft.proofVersion,
+    sha256Hash: activeProof.sha256Hash,
     approvedBy: actor.email,
-    approvedAt: now,
-  };
+  });
 
-  const updatedProofs = [
-    ...draft.proofs.filter((p) => p.version !== draft.proofVersion),
-    approvedProofRecord,
-  ];
-
-  // Must transition from artwork_ready or proof_pending to proof_approved
-  const fromStatus = draft.status;
-  const toStatus: DraftStatus = "proof_approved";
-
-  const auditEntry: DraftAuditLogEntry = {
-    id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    timestamp: now,
-    actorId: actor.id,
-    actorEmail: actor.email,
-    fromStatus,
-    toStatus,
-    action: "PROOF_APPROVED",
-    details: {
-      version: draft.proofVersion,
-      sha256Hash: approvedProofRecord.sha256Hash,
-      approvedBy: actor.email,
-    },
-  };
-
-  const updated: JobDraft = {
-    ...draft,
-    status: toStatus,
-    proofs: updatedProofs,
-    auditLog: [...draft.auditLog, auditEntry],
-    updatedAt: now,
-  };
-
-  draftsMap.set(draftId, updated);
-  persistStore();
-  return updated;
+  return (await getDraft(draftId))!;
 }
 
-/**
- * Task 4 & Task 3: Request changes creates v2, v3... and returns to proof_pending
- */
-export function requestDraftProofChanges(
-  draftId: string,
-  feedback: string,
-  actor: { id: string; email: string }
-): JobDraft {
-  loadStore();
-  const draft = draftsMap.get(draftId);
-  if (!draft) {
-    throw new Error(`Draft ${draftId} not found`);
-  }
+export async function requestDraftProofChanges(draftId: string, feedback: string, actor: Actor): Promise<JobDraft> {
+  const draft = await getDraft(draftId);
+  if (!draft) throw new Error(`Draft ${draftId} not found`);
 
-  const now = new Date().toISOString();
-  const currentProof = draft.proofs.find((p) => p.version === draft.proofVersion);
-  const updatedCurrentProof: DraftProofRecord = currentProof
-    ? { ...currentProof, feedback }
-    : {
-        version: draft.proofVersion,
-        renderedUrl: "",
-        sha256Hash: "",
-        createdAt: now,
-        feedback,
-      };
+  const current = draft.proofs.find((p) => p.version === draft.proofVersion) ?? {
+    version: draft.proofVersion,
+    renderedUrl: "",
+    sha256Hash: "",
+    createdAt: new Date().toISOString(),
+  };
+  await saveProofRecord(draftId, { ...current, feedback });
 
   const nextVersion = draft.proofVersion + 1;
-  const newProof = generateDraftProof(draft, nextVersion);
+  await saveProofRecord(draftId, await generateDraftProof(draft, nextVersion));
 
-  const updatedProofs = [
-    ...draft.proofs.filter((p) => p.version !== draft.proofVersion),
-    updatedCurrentProof,
-    newProof,
-  ];
+  unwrap(
+    await db().from("drafts").update({ status: "proof_pending", proof_version: nextVersion }).eq("id", draftId),
+    "Request changes"
+  );
+  await logEvent(draftId, actor, "PROOF_CHANGES_REQUESTED", draft.status, "proof_pending", {
+    previousVersion: draft.proofVersion,
+    newVersion: nextVersion,
+    feedback,
+  });
 
-  const auditEntry: DraftAuditLogEntry = {
-    id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    timestamp: now,
-    actorId: actor.id,
-    actorEmail: actor.email,
-    fromStatus: draft.status,
-    toStatus: "proof_pending",
-    action: "PROOF_CHANGES_REQUESTED",
-    details: {
-      previousVersion: draft.proofVersion,
-      newVersion: nextVersion,
-      feedback,
-    },
-  };
-
-  const updated: JobDraft = {
-    ...draft,
-    status: "proof_pending",
-    proofVersion: nextVersion,
-    proofs: updatedProofs,
-    auditLog: [...draft.auditLog, auditEntry],
-    updatedAt: now,
-  };
-
-  draftsMap.set(draftId, updated);
-  persistStore();
-  return updated;
+  return (await getDraft(draftId))!;
 }
 
-/**
- * Task 2: Attach guest draft to user account upon login
- */
-export function attachDraftToUser(
-  draftId: string,
-  userId: string,
-  userEmail: string
-): JobDraft {
-  loadStore();
-  const draft = draftsMap.get(draftId);
-  if (!draft) {
-    throw new Error(`Draft ${draftId} not found`);
-  }
+export async function attachDraftToUser(draftId: string, userId: string, userEmail: string): Promise<JobDraft> {
+  const draft = await getDraft(draftId);
+  if (!draft) throw new Error(`Draft ${draftId} not found`);
 
-  const now = new Date().toISOString();
-  const auditEntry: DraftAuditLogEntry = {
-    id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    timestamp: now,
-    actorId: userId,
-    actorEmail: userEmail,
-    fromStatus: draft.status,
-    toStatus: draft.status,
-    action: "DRAFT_ATTACHED_TO_USER",
-    details: { userId, userEmail },
-  };
-
-  const updated: JobDraft = {
-    ...draft,
-    customerId: userId,
-    customerEmail: userEmail,
-    auditLog: [...draft.auditLog, auditEntry],
-    updatedAt: now,
-  };
-
-  draftsMap.set(draftId, updated);
-  persistStore();
-  return updated;
+  unwrap(
+    await db().from("drafts").update({ customer_id: userId, customer_email: userEmail }).eq("id", draftId),
+    "Attach draft"
+  );
+  await logEvent(draftId, { id: userId, email: userEmail }, "DRAFT_ATTACHED_TO_USER", draft.status, draft.status, {
+    userId,
+    userEmail,
+  });
+  return (await getDraft(draftId))!;
 }
 
-/**
- * Task 2 & Task 5: Authoritative price recalculation from draft specifications
- */
-export function calculateDraftPrice(draft: JobDraft): PricingBreakdown {
-  const product = PRODUCTS.find((p) => p.id === draft.productId || p.slug === draft.productId) || PRODUCTS[0];
+/** Server-authoritative price for a draft, recalculated from the catalogue. */
+export async function calculateDraftPrice(draft: JobDraft): Promise<PricingBreakdown> {
+  const product = await getProductById(draft.productId);
+  if (!product) throw new Error(`Product '${draft.productId}' for draft ${draft.id} no longer exists`);
   return calculatePrintPrice({
     product,
     widthMm: draft.options.widthMm,
@@ -428,17 +401,4 @@ export function calculateDraftPrice(draft: JobDraft): PricingBreakdown {
     materialId: draft.options.materialId,
     quantity: draft.quantity,
   });
-}
-
-/**
- * Helper to reset/seed draft store for tests
- */
-export function resetDraftsStore(seedDrafts?: JobDraft[]) {
-  draftsMap = new Map();
-  if (seedDrafts) {
-    for (const d of seedDrafts) {
-      draftsMap.set(d.id, d);
-    }
-  }
-  persistStore();
 }

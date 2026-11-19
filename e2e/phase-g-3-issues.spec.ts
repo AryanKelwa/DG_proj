@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { getOrderById, resetOrderStore } from "../src/modules/orders/order-store";
+import { getOrderById } from "../src/modules/orders/order-store";
 import { createDraft, getDraft } from "../src/modules/drafts/draft-store";
 import { generateProductionPdf } from "../src/modules/print-engine/pdf-generator";
 
@@ -28,7 +28,7 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     };
 
     // 1. Create a draft in proof_approved status
-    const draft1 = createDraft({
+    const draft1 = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 75,
       heightMm: 75,
@@ -77,7 +77,7 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     expect(orderNumber1).toBeTruthy();
 
     // 6. Assert DB row contains the exact address (No defaults!)
-    const dbOrder1 = getOrderById(orderNumber1);
+    const dbOrder1 = await getOrderById(orderNumber1);
     expect(dbOrder1).not.toBeNull();
     expect(dbOrder1!.shipping_address.name).toBe(address1.name);
     expect(dbOrder1!.shipping_address.line1).toBe(address1.line1);
@@ -132,7 +132,7 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
       country: "United Kingdom",
     };
 
-    const draft2 = createDraft({
+    const draft2 = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 100,
       heightMm: 50,
@@ -174,7 +174,7 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     const orderNumber2 = new URL(page.url()).searchParams.get("order_number")!;
     expect(orderNumber2).toBeTruthy();
 
-    const dbOrder2 = getOrderById(orderNumber2);
+    const dbOrder2 = await getOrderById(orderNumber2);
     expect(dbOrder2).not.toBeNull();
     expect(dbOrder2!.shipping_address.name).toBe(address2.name);
     expect(dbOrder2!.shipping_address.line1).toBe(address2.line1);
@@ -197,7 +197,7 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     page,
     request,
   }) => {
-    const draft = createDraft({
+    const draft = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 75,
       heightMm: 75,
@@ -273,7 +273,7 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     const customerAId = "usr-cust-1";
 
     // 1. Create and pay for an order as Customer A
-    const draftA = createDraft({
+    const draftA = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 75,
       heightMm: 75,
@@ -406,7 +406,7 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     expect(secondData.isNew).toBe(false);
 
     // Verify exactly ONE order in database
-    const order = getOrderById(uniqueOrderNumber);
+    const order = await getOrderById(uniqueOrderNumber);
     expect(order).not.toBeNull();
     expect(order!.order_number).toBe(uniqueOrderNumber);
   });

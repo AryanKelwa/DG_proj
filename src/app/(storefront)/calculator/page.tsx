@@ -1,12 +1,16 @@
 import { Suspense } from "react";
 import { PricingCalculator } from "@/modules/pricing/components/pricing-calculator";
+import { getAllProducts } from "@/modules/catalog/catalog-store";
+
+export const revalidate = 60;
 
 export const metadata = {
   title: "Instant Price Calculator · W2P Print House",
   description: "Live instant pricing by dimensions, material multiplier, and automated volume discount floors. Fully transparent with VAT breakdown.",
 };
 
-export default function CalculatorPage() {
+export default async function CalculatorPage() {
+  const products = await getAllProducts();
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <div className="mb-8 space-y-2">
@@ -22,7 +26,7 @@ export default function CalculatorPage() {
       </div>
 
       <Suspense fallback={<div className="p-8 text-center text-xs font-mono">Loading pricing matrix...</div>}>
-        <PricingCalculator />
+        <PricingCalculator products={products} />
       </Suspense>
     </div>
   );

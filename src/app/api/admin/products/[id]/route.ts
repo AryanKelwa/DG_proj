@@ -7,7 +7,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
@@ -16,13 +16,13 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
 
-    const result = updateProduct(id, body);
+    const result = await updateProduct(id, body);
 
     if (!result.success || !result.product) {
       return NextResponse.json({ error: result.error || "Failed to update product" }, { status: 400 });
     }
 
-    logAdminAction(
+    await logAdminAction(
       auth.user!.id,
       auth.user!.email,
       "product_template_edit",

@@ -16,7 +16,7 @@ export async function POST(
       );
     }
 
-    const updatedDraft = attachDraftToUser(id, body.userId, body.userEmail);
+    const updatedDraft = await attachDraftToUser(id, body.userId, body.userEmail);
     return NextResponse.json({ success: true, draft: updatedDraft });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to attach draft to user";

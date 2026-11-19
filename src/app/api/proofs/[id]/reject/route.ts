@@ -29,9 +29,9 @@ export async function POST(
       );
     }
 
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
     const { feedback, orderId, currentVersion, customerEmail } = validated.data;
-    const order = getOrderById(orderId);
+    const order = await getOrderById(orderId);
 
     if (!order) {
       return NextResponse.json({ error: `Order ${orderId} not found` }, { status: 404 });
@@ -40,8 +40,7 @@ export async function POST(
     // Authorization check: User must own the order or be an admin
     if (sessionUser && sessionUser.role !== "admin") {
       const isOwner =
-        order.customer_id === sessionUser.id ||
-        order.customer_email?.toLowerCase() === sessionUser.email.toLowerCase();
+        order.customer_id === sessionUser.id;
       if (!isOwner) {
         return NextResponse.json(
           { error: "Forbidden: You do not own this order's proof" },
@@ -57,12 +56,12 @@ export async function POST(
     const gateResult = checkApprovalGate("changes_requested");
 
     // Update proof record in store
-    updateProof(id, {
+    await updateProof(id, {
       status: "changes_requested",
       customer_feedback: feedback,
     });
 
-    updateOrderStageWithVersion(
+    await updateOrderStageWithVersion(
       orderId,
       "PROOF",
       undefined,

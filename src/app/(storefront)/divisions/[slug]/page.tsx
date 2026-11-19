@@ -1,11 +1,9 @@
 import React from "react";
 import { notFound } from "next/navigation";
-import { DIVISIONS, PRODUCTS } from "@/lib/data/mock-data";
+import { getAllDivisions, getAllProducts } from "@/modules/catalog/catalog-store";
 import { DivisionView } from "@/modules/catalog/components/division-view";
 
-export async function generateStaticParams() {
-  return DIVISIONS.map((d) => ({ slug: d.slug }));
-}
+export const revalidate = 60;
 
 export default async function DivisionPage({
   params,
@@ -13,13 +11,14 @@ export default async function DivisionPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const division = DIVISIONS.find((d) => d.slug === slug);
+  const [divisions, allProducts] = await Promise.all([getAllDivisions(), getAllProducts()]);
+  const division = divisions.find((d) => d.slug === slug);
 
   if (!division) {
     notFound();
   }
 
-  const products = PRODUCTS.filter((p) => p.division_slug === slug);
+  const products = allProducts.filter((p) => p.division_slug === slug);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

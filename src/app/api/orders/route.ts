@@ -5,7 +5,7 @@ import { getAuthUser } from "@/lib/server-auth";
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
 
     if (!sessionUser) {
       return NextResponse.json(
@@ -15,15 +15,14 @@ export async function GET(req: NextRequest) {
     }
 
     if (sessionUser.role === "admin") {
-      const requestedRole = searchParams.get("role") || "admin";
-      const targetUserId = searchParams.get("userId") || undefined;
-      const targetUserEmail = searchParams.get("userEmail") || undefined;
-      const orders = getOrdersForUser(targetUserId, targetUserEmail, requestedRole);
+      // Admins see every order, or one customer's orders with ?userId=<uuid>.
+      const targetUserId = searchParams.get("userId");
+      const orders = await getOrdersForUser(targetUserId, targetUserId ? "customer" : "admin");
       return NextResponse.json({ orders });
     }
 
     // Strict customer isolation: Identity derives ONLY from authenticated session
-    const orders = getOrdersForUser(sessionUser.id, sessionUser.email, "customer");
+    const orders = await getOrdersForUser(sessionUser.id, "customer");
     return NextResponse.json({ orders });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to retrieve orders";
@@ -34,7 +33,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
 
     // If authenticated as customer, enforce order customer_id binds to session
     if (sessionUser && sessionUser.role === "customer") {
@@ -45,7 +44,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { order, isNew } = createOrder(body);
+    const { order, isNew } = await createOrder(body);
     return NextResponse.json({ order, isNew }, { status: isNew ? 201 : 200 });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to create order";

@@ -1,12 +1,11 @@
 import React from "react";
 import { notFound } from "next/navigation";
-import { PRODUCTS } from "@/lib/data/mock-data";
 import { DesignerPageView } from "@/modules/designer/components/designer-page-view";
 import { getDraft, createDraft } from "@/modules/drafts/draft-store";
+import { getProductBySlug } from "@/modules/catalog/catalog-store";
 
-export async function generateStaticParams() {
-  return PRODUCTS.map((p) => ({ productSlug: p.slug }));
-}
+// Always rendered per request: every visit works on its own draft.
+export const dynamic = "force-dynamic";
 
 export default async function DesignerPage({
   params,
@@ -18,13 +17,13 @@ export default async function DesignerPage({
   const { productSlug } = await params;
   const sParams = await searchParams;
 
-  const product = PRODUCTS.find((p) => p.slug === productSlug);
-  if (!product) {
+  const product = await getProductBySlug(productSlug);
+  if (!product || !product.is_active) {
     notFound();
   }
 
   // Task 2: Retrieve persisted draft or instantiate sensible default
-  let draft = sParams.draft ? getDraft(sParams.draft) : null;
+  let draft = sParams.draft ? await getDraft(sParams.draft) : null;
 
   if (!draft) {
     const width = Number(sParams.w) || product.default_width_mm;
@@ -32,7 +31,7 @@ export default async function DesignerPage({
     const material = sParams.mat || product.allowed_materials[0]?.id || "default";
     const qty = Number(sParams.qty) || 100;
 
-    draft = createDraft({
+    draft = await createDraft({
       productId: product.id,
       widthMm: width,
       heightMm: height,

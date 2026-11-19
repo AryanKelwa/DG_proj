@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/server-auth";
 import { getArchivedOrders } from "@/modules/orders/order-store";
 
 export async function GET(req: NextRequest) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const date_from = searchParams.get("date_from") || undefined;
     const date_to = searchParams.get("date_to") || undefined;
 
-    const result = getArchivedOrders({
+    const result = await getArchivedOrders({
       query,
       customer,
       product_type,

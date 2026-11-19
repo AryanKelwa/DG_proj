@@ -1,54 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import { registerCustomerUser, createSessionToken } from "@/modules/auth/users-store";
+import { z } from "zod";
+import { authClientForRoute } from "@/lib/supabase/server";
+import { registerCustomerUser, validatePasswordStrength } from "@/modules/auth/users-store";
+import { toSafeUser } from "@/lib/server-auth";
+
+const RegisterSchema = z.object({
+  email: z.string().trim().email("A valid email address is required."),
+  password: z.string(),
+  fullName: z.string().trim().min(1, "Full name is required.").max(120),
+  companyName: z.string().trim().max(160).optional(),
+  phone: z.string().trim().max(32).optional(),
+});
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { email, password, fullName, companyName, phone } = body;
-
-    if (!email || !password || !fullName) {
-      return NextResponse.json(
-        { error: "Email, password, and full name are required." },
-        { status: 400 }
-      );
-    }
-
-    // Server-enforced role: customer only (PRD § 03)
-    const { success, user, error } = registerCustomerUser(email, password, {
-      fullName,
-      companyName,
-      phone,
-    });
-
-    if (!success || !user) {
-      return NextResponse.json({ error: error || "Registration failed." }, { status: 400 });
-    }
-
-    const token = createSessionToken(user);
-
-    const safeUser = {
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name,
-      role: "customer" as const, // Strict customer role
-      company_name: user.company_name,
-      phone: user.phone,
-      created_at: user.created_at,
-    };
-
-    const response = NextResponse.json({ success: true, user: safeUser, token }, { status: 201 });
-
-    response.cookies.set("w2p_session", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60,
-    });
-
-    return response;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Registration error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+  const parsed = RegisterSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message || "Email, password, and full name are required.";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
+
+  const { email, password, fullName, companyName, phone } = parsed.data;
+  const passwordProblem = validatePasswordStrength(password);
+  if (passwordProblem) {
+    return NextResponse.json({ error: passwordProblem }, { status: 400 });
+  }
+
+  // Public signup always creates a customer; the role is set by the database.
+  const result = await registerCustomerUser(email, password, { fullName, companyName, phone });
+  if (!result.success || !result.user) {
+    const status = result.error?.includes("already exists") ? 409 : 400;
+    return NextResponse.json({ error: result.error || "Registration failed." }, { status });
+  }
+
+  // Sign the new customer in so the session cookies are set.
+  const response = NextResponse.json({});
+  const supabase = authClientForRoute(req, response);
+  const { data, error } = await supabase.auth.signInWithPassword({ email: email.toLowerCase(), password });
+  if (error || !data.session) {
+    return NextResponse.json({ error: "Account created. Please sign in." }, { status: 201 });
+  }
+
+  return NextResponse.json(
+    { success: true, user: toSafeUser(result.user), token: data.session.access_token },
+    { status: 201, headers: response.headers }
+  );
 }

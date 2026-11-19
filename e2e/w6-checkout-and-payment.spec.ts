@@ -14,7 +14,7 @@ test.describe("W6. Checkout & Payment Engine (PRD §05)", () => {
   test("PRD §05: Tampering with client-submitted price is overridden by server-calculated pricing", async ({
     request,
   }) => {
-    const draft = createDraft({
+    const draft = await createDraft({
       productId: "prod-vinyl-sticker",
       widthMm: 100,
       heightMm: 100,
@@ -160,7 +160,7 @@ test.describe("W6. Checkout & Payment Engine (PRD §05)", () => {
     page,
   }) => {
     test.setTimeout(60000);
-    const draft = createDraft({
+    const draft = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 75,
       heightMm: 75,

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getDraft, calculateDraftPrice, transitionDraftStatus } from "@/modules/drafts/draft-store";
 import { generateXeroInvoicePayload } from "@/modules/orders/xero-generator";
-import { PRODUCTS } from "@/lib/data/mock-data";
+import { getProductById } from "@/modules/catalog/catalog-store";
+import { getAuthUser } from "@/lib/server-auth";
 import { Order } from "@/types/database";
-import { createOrder } from "@/modules/orders/order-store";
+import { createOrder, reserveOrderNumber, NewOrderItem } from "@/modules/orders/order-store";
 import { z } from "zod";
 
 const ukPostcodeRegex = /^[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}$/i;
@@ -73,11 +74,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Orders always belong to a signed-in customer account.
+    const sessionUser = await getAuthUser(req);
+    if (!sessionUser) {
+      return NextResponse.json({ error: "Please sign in to place your order." }, { status: 401 });
+    }
+
     // Task 2 & Task 3: Load persisted job draft
-    const draft = getDraft(draftId);
+    const draft = await getDraft(draftId);
     if (!draft) {
       return NextResponse.json({ error: "Job draft not found" }, { status: 404 });
     }
+    if (draft.customerId && draft.customerId !== sessionUser.id) {
+      return NextResponse.json({ error: "Forbidden: this job belongs to another account." }, { status: 403 });
+    }
+    const actor = { id: sessionUser.id, email: sessionUser.email };
 
     // Task 3 & Task 5: Enforce Approval Gate (§ 08 & § 05)
     if (draft.status !== "proof_approved" && draft.status !== "payment_pending") {
@@ -93,16 +104,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Task 2: Server authoritative price recalculation from draft specifications
-    const pricing = calculateDraftPrice(draft);
-    const product = PRODUCTS.find((p) => p.id === draft.productId || p.slug === draft.productId) || PRODUCTS[0];
-    const newOrderNumber = `W2P-2026-00${Math.floor(100 + Math.random() * 900)}`;
+    const pricing = await calculateDraftPrice(draft);
+    const product = await getProductById(draft.productId);
+    if (!product) {
+      return NextResponse.json({ error: "This product is no longer available." }, { status: 409 });
+    }
+    const newOrderNumber = await reserveOrderNumber();
 
     // Transition draft to payment_pending
     if (draft.status === "proof_approved") {
-      transitionDraftStatus(
+      await transitionDraftStatus(
         draft.id,
         "payment_pending",
-        { id: draft.customerId || "usr-cust-1", email: customerEmail },
+        actor,
         { orderNumber: newOrderNumber }
       );
     }
@@ -124,9 +138,9 @@ export async function POST(req: NextRequest) {
 
     // Issue 3: Order object with full snapshot
     const completedOrder: Order = {
-      id: `ord-${Date.now()}`,
+      id: "",
       order_number: newOrderNumber,
-      customer_id: draft.customerId || "usr-cust-01",
+      customer_id: sessionUser.id,
       customer_email: customerEmail,
       customer_name: customerName,
       pipeline_stage: "ORDER",
@@ -134,7 +148,8 @@ export async function POST(req: NextRequest) {
       subtotal_cents: pricing.subtotalCents,
       tax_cents: pricing.vatAmountCents,
       total_cents: pricing.totalGrossCents,
-      currency: "GBP",
+      currency: "INR",
+      division_slug: product.division_slug,
       shipping_address: immutableAddressSnapshot,
       draft_id: draft.id,
       proof_version: latestProof?.version || 1,
@@ -142,15 +157,36 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
+    const material = product.allowed_materials.find((m) => m.id === draft.options.materialId);
+    const orderItems: NewOrderItem[] = [
+      {
+        product_id: product.id,
+        product_name: product.name,
+        division_slug: product.division_slug,
+        hsn_code: product.hsn_code,
+        width_mm: draft.options.widthMm,
+        height_mm: draft.options.heightMm,
+        material_id: draft.options.materialId,
+        material_name: material?.name ?? pricing.materialName,
+        quantity: draft.quantity,
+        unit_price_cents: pricing.discountedUnitPriceCents,
+        total_price_cents: pricing.subtotalCents,
+        gst_rate: product.gst_rate,
+        artwork_type: draft.uploadedFileRef ? "upload" : "designer",
+        design_json: draft.designJson,
+        uploaded_file_path: draft.uploadedFileRef,
+      },
+    ];
+
     // Test card simulation checks (PRD § 05 & Testing Checklist)
     const cleanCard = cardNumber?.replace(/\s+/g, "") || "";
     if (paymentMethod === "card") {
       if (cleanCard.endsWith("0002")) {
         // Return draft to proof_approved so user can retry without losing artwork (Task 3)
-        transitionDraftStatus(
+        await transitionDraftStatus(
           draft.id,
           "proof_approved",
-          { id: draft.customerId || "usr-cust-1", email: customerEmail },
+          actor,
           { reason: "Payment card declined" }
         );
 
@@ -166,10 +202,10 @@ export async function POST(req: NextRequest) {
 
       if (cleanCard.endsWith("3155")) {
         // 3D Secure Authentication required
-        transitionDraftStatus(
+        await transitionDraftStatus(
           draft.id,
           "paid",
-          { id: draft.customerId || "usr-cust-1", email: customerEmail },
+          actor,
           { authentication: "3DS_PASSED" }
         );
         completedOrder.payment_status = "paid";
@@ -177,7 +213,7 @@ export async function POST(req: NextRequest) {
         completedOrder.xero_invoice_data = xeroInvoice as any;
 
         // Persist to order store
-        createOrder(completedOrder);
+        await createOrder(completedOrder, orderItems);
 
         return NextResponse.json(
           {
@@ -204,10 +240,10 @@ export async function POST(req: NextRequest) {
         line_items: [
           {
             price_data: {
-              currency: "gbp",
+              currency: "inr",
               product_data: {
                 name: `${product.name} (${draft.options.widthMm}x${draft.options.heightMm}mm)`,
-                description: `Material: ${pricing.materialName} · Qty: ${draft.quantity} units (inc. 20% VAT)`,
+                description: `Material: ${pricing.materialName} · Qty: ${draft.quantity} units (incl. GST)`,
               },
               unit_amount: Math.round(pricing.totalGrossCents / draft.quantity),
             },
@@ -216,6 +252,7 @@ export async function POST(req: NextRequest) {
         ],
         metadata: {
           draftId: draft.id,
+          customerId: sessionUser.id,
           orderNumber: newOrderNumber,
           productId: product.id,
           subtotalCents: String(pricing.subtotalCents),
@@ -236,10 +273,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Direct Card Payment Successful Flow (§ 05, § 15)
-    transitionDraftStatus(
+    await transitionDraftStatus(
       draft.id,
       "paid",
-      { id: draft.customerId || "usr-cust-1", email: customerEmail },
+      actor,
       { paymentMethod: "card" }
     );
     completedOrder.payment_status = "paid";
@@ -247,7 +284,7 @@ export async function POST(req: NextRequest) {
     completedOrder.xero_invoice_data = xeroInvoice as any;
 
     // Issue 3: Persist order to database/order store
-    const { order: savedOrder } = createOrder(completedOrder);
+    const { order: savedOrder } = await createOrder(completedOrder, orderItems);
 
     return NextResponse.json({
       sessionId: `sim_cs_${Date.now()}`,

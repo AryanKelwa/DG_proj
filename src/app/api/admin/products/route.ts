@@ -4,13 +4,13 @@ import { getAllProducts, createProduct } from "@/modules/catalog/catalog-store";
 import { logAdminAction } from "@/modules/audit/audit-store";
 
 export async function GET(req: NextRequest) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
 
   try {
-    const products = getAllProducts();
+    const products = await getAllProducts();
     return NextResponse.json({ products });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to load products";
@@ -19,20 +19,20 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
 
   try {
     const body = await req.json();
-    const result = createProduct(body);
+    const result = await createProduct(body);
 
     if (!result.success || !result.product) {
       return NextResponse.json({ error: result.error || "Failed to create product" }, { status: 400 });
     }
 
-    logAdminAction(
+    await logAdminAction(
       auth.user!.id,
       auth.user!.email,
       "product_template_edit",

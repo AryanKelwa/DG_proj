@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/server-auth";
 import { getEmailLogs } from "@/modules/email/email-store";
 
 export async function GET(req: NextRequest) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const recipient = searchParams.get("recipient") || undefined;
     const event = searchParams.get("event") || undefined;
 
-    const logs = getEmailLogs({ orderId, recipient, event });
+    const logs = await getEmailLogs({ orderId, recipient, event });
 
     return NextResponse.json({
       success: true,
