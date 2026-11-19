@@ -42,8 +42,8 @@ test.describe("W10. Security & Role Authorization (PRD §03, §10, §13)", () =>
     await expect(page.locator("body")).toContainText("Sarah Jenkins");
 
     // Assert Customer B's name is NOT visible
-    await expect(page.locator("body")).not.toContainText("Alex Thorne");
-    await expect(page.locator("body")).not.toContainText("Gravel Hub UK");
+    await expect(page.locator("body")).not.toContainText("customerb@example.com");
+    await expect(page.locator("body")).not.toContainText("Apex Biking Co");
   });
 
   test("PRD §15: Verify zero secret keys are exposed in client-accessible environment variables", () => {

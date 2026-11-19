@@ -8,8 +8,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ArrowRight, AlertCircle, Lock } from "lucide-react";
+import { ArrowRight, AlertCircle } from "lucide-react";
 
 function LoginForm() {
   const router = useRouter();
@@ -136,7 +135,7 @@ function LoginForm() {
 
         <CardFooter className="flex flex-col space-y-4 border-t pt-4 bg-secondary/30">
           <div className="text-xs text-center text-muted-foreground">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link href="/signup" className="text-brand-500 font-semibold hover:underline">
               Create account
             </Link>

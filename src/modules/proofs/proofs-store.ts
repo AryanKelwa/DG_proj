@@ -1,9 +1,9 @@
+import { dataFile } from "@/lib/data-dir";
 import fs from "fs";
-import path from "path";
-import { Proof, ProofStatus } from "@/types/database";
+import { Proof } from "@/types/database";
 import { getOrdersForUser } from "@/modules/orders/order-store";
 
-const PROOFS_STORE_FILE = path.join(process.cwd(), ".proofs-store.json");
+const PROOFS_STORE_FILE = dataFile(".proofs-store.json");
 
 interface ProofsStoreData {
   proofs: Record<string, Proof>;

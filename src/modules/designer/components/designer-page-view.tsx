@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -17,19 +17,15 @@ import { calculatePrintBounds, computeFittedFontSize } from "../utils/print-cons
 import { DesignerToolbar } from "./designer-toolbar";
 import { DirectUploadView } from "./direct-upload-view";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
   Sparkles,
   Save,
-  FileCheck2,
   UploadCloud,
   Palette,
   Eye,
   CheckCircle2,
   ArrowRight,
-  Download,
-  AlertCircle,
   Loader2,
 } from "lucide-react";
 import Konva from "konva";
@@ -65,7 +61,7 @@ export function DesignerPageView({
   const [mode, setMode] = useState<"designer" | "upload">("designer");
   const stageRef = useRef<Konva.Stage | null>(null);
 
-  const [dimensions, setDimensions] = useState<PrintDimensions>({
+  const [dimensions] = useState<PrintDimensions>({
     widthMm: initialWidthMm,
     heightMm: initialHeightMm,
     bleedMm: product.default_bleed_mm,
@@ -545,6 +541,8 @@ export function DesignerPageView({
             product={product}
             widthMm={dimensions.widthMm}
             heightMm={dimensions.heightMm}
+            // TODO(Phase 4, bug B19): the uploaded file (url, name) is discarded and never attached to the draft.
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             onUploadSuccess={(url, name) => {
               handleOpenProofModal();
             }}

@@ -1,9 +1,9 @@
+import { dataFile } from "@/lib/data-dir";
 import fs from "fs";
-import path from "path";
 import { Product, PricingTier, Division } from "@/types/database";
 import { PRODUCTS, DIVISIONS, VOLUME_DISCOUNTS } from "@/lib/data/mock-data";
 
-const CATALOG_STORE_FILE = path.join(process.cwd(), ".catalog-store.json");
+const CATALOG_STORE_FILE = dataFile(".catalog-store.json");
 
 export interface ExtendedProduct extends Product {
   pricing_tiers?: PricingTier[];

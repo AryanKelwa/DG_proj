@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Order, Proof, SavedDesign } from "@/types/database";
 import { ProofReviewDialog } from "@/modules/proofs/components/proof-review-dialog";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,14 +17,9 @@ import {
   Receipt,
   RotateCcw,
   CheckCircle2,
-  AlertTriangle,
-  Clock,
-  Download,
   Building,
   Mail,
   Phone,
-  Layers,
-  ArrowRight,
 } from "lucide-react";
 
 export function CustomerDashboardView() {
@@ -34,6 +29,7 @@ export function CustomerDashboardView() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [proofs, setProofs] = useState<Proof[]>([]);
   const [savedDesigns, setSavedDesigns] = useState<SavedDesign[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(Phase 8): loading state is never shown to the user
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
   const [reorderSuccess, setReorderSuccess] = useState<string | null>(null);
   const [checkoutSuccessOrder, setCheckoutSuccessOrder] = useState<string | null>(null);
@@ -93,6 +89,8 @@ export function CustomerDashboardView() {
   }, [searchParams, user]);
 
   // Handle 1-click reorder (§ 09, § 10)
+  // TODO(Phase 8, bug B18): the order argument is ignored; every reorder recreates a hardcoded 75x75mm vinyl x100 job.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleReorder = async (order: Order) => {
     try {
       const res = await fetch("/api/drafts", {
@@ -618,7 +616,7 @@ export function CustomerDashboardView() {
             },
           }}
           customerEmail={user?.email || "customer@example.com"}
-          onApprove={(id, email) => {
+          onApprove={(id) => {
             handleApproveProof(id);
             setReorderSuccess(`Proof v${selectedProofForReview.version_number} formally APPROVED. Production files are now unlocked!`);
             setTimeout(() => setReorderSuccess(null), 5000);

@@ -1,6 +1,5 @@
-import React, { Suspense } from "react";
+import { Suspense } from "react";
 import { PricingCalculator } from "@/modules/pricing/components/pricing-calculator";
-import { Badge } from "@/components/ui/badge";
 
 export const metadata = {
   title: "Instant Price Calculator · W2P Print House",

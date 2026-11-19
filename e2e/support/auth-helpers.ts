@@ -9,11 +9,11 @@ export const TEST_USERS = {
     company: "Grizedale Enduro Racing",
   },
   customerB: {
-    email: "alex@gravelhub.co.uk",
+    email: "customerb@example.com",
     password: "customer123",
-    name: "Alex Thorne",
+    name: "Customer B",
     role: "customer",
-    company: "Gravel Hub UK",
+    company: "Apex Biking Co",
   },
   admin: {
     email: "admin@w2p.co.in",

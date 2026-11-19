@@ -4,17 +4,10 @@ import React, { useState } from "react";
 import { ProofRecord } from "../types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
-  FileCheck2,
   CheckCircle2,
-  AlertTriangle,
-  History,
-  Clock,
-  User,
   ShieldCheck,
-  RotateCcw,
   MessageSquare,
 } from "lucide-react";
 
@@ -195,7 +188,7 @@ export function ProofReviewDialog({
             proof.customerFeedback && (
               <div className="p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 text-xs font-mono text-amber-800 dark:text-amber-300">
                 <span className="font-bold block">Previous Customer Feedback:</span>
-                "{proof.customerFeedback}"
+                &ldquo;{proof.customerFeedback}&rdquo;
               </div>
             )
           )}

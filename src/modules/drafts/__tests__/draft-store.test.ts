@@ -2,7 +2,6 @@ import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   createDraft,
-  getDraft,
   transitionDraftStatus,
   approveDraftProof,
   requestDraftProofChanges,

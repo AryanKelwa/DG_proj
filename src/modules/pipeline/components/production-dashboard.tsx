@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { PipelineStage, DivisionSlug, Order } from "@/types/database";
+import { PipelineStage } from "@/types/database";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,37 +12,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Search,
-  Filter,
   Download,
-  Lock,
-  Unlock,
   CheckCircle2,
   AlertCircle,
   BarChart3,
   Archive,
   ArrowRight,
-  ArrowLeft,
-  ShieldCheck,
-  FileText,
-  Clock,
   Layers,
   Users,
   Settings,
   RefreshCw,
   AlertTriangle,
-  ChevronRight,
   Eye,
-  Calendar,
-  DollarSign,
   PackageCheck,
   Ban,
-  Check,
   X,
 } from "lucide-react";
 
 export function ProductionDashboardView() {
   const router = useRouter();
-  const { role, user, isLoading, signOut } = useAuth();
+  const { role, user, isLoading } = useAuth();
 
   // Active Navigation Tab: orders | users | products | reports | archive
   const [activeTab, setActiveTab] = useState<"orders" | "users" | "products" | "reports" | "archive">("orders");
@@ -293,7 +282,7 @@ export function ProductionDashboardView() {
 
       setFeedbackMsg({ type: "success", text: `User role updated to ${newRole}.` });
       await fetchUsers();
-    } catch (err: unknown) {
+    } catch {
       setFeedbackMsg({ type: "error", text: "Role update failed." });
     }
   };
@@ -319,7 +308,7 @@ export function ProductionDashboardView() {
         text: `User account ${!currentStatus ? "activated" : "deactivated"} successfully.`,
       });
       await fetchUsers();
-    } catch (err: unknown) {
+    } catch {
       setFeedbackMsg({ type: "error", text: "Status update failed." });
     }
   };
@@ -1101,7 +1090,7 @@ export function ProductionDashboardView() {
                 <div>
                   <CardTitle className="text-lg">Business Analytics & Aggregates</CardTitle>
                   <CardDescription className="text-xs">
-                    Revenue computed strictly from confirmed payments ('paid'). Pending and cancelled orders are excluded.
+                    Revenue computed strictly from confirmed payments (&apos;paid&apos;). Pending and cancelled orders are excluded.
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">

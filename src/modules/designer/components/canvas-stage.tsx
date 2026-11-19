@@ -44,7 +44,6 @@ interface CanvasStageProps {
 // Subcomponent for rendering images with use-image
 function KonvaURLImage({
   element,
-  isSelected,
   onSelect,
   onChange,
 }: {

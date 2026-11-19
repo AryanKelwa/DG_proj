@@ -3,9 +3,8 @@
 import React, { useState } from "react";
 import { Product } from "@/types/database";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { UploadCloud, FileCheck, CheckCircle2, AlertTriangle, FileText } from "lucide-react";
+import { UploadCloud, FileCheck } from "lucide-react";
 
 interface DirectUploadViewProps {
   product: Product;

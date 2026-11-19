@@ -1,9 +1,9 @@
+import { dataFile } from "@/lib/data-dir";
 import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 import { EmailLogRecord } from "./types";
 
-const EMAIL_STORE_FILE = path.join(process.cwd(), ".email-logs-store.json");
+const EMAIL_STORE_FILE = dataFile(".email-logs-store.json");
 
 interface EmailStoreData {
   logs: EmailLogRecord[];
