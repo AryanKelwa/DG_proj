@@ -12,7 +12,7 @@ import {
   reserveOrderNumber,
 } from "@/modules/orders/order-store";
 import { getProofsForUser } from "@/modules/proofs/proofs-store";
-import { createDraft, approveDraftProof } from "@/modules/drafts/draft-store";
+import { createDraft, approveDraftProof, transitionDraftStatus } from "@/modules/drafts/draft-store";
 import { saveDesign, getSavedDesignsForUser, deleteSavedDesign } from "@/modules/designs/saved-designs-store";
 import { Order } from "@/types/database";
 
@@ -79,6 +79,8 @@ describe("Orders, isolation, admin search & reports (PRD § 05, § 10, § 11)", 
   it("customers only ever see their own orders, proofs and designs", async () => {
     await createOrder(orderFor(bob));
     const aliceDraft = await createDraft({ productId: "prod-vinyl-sticker", widthMm: 60, heightMm: 60, materialId: "gloss-white", quantity: 10, customerId: alice.id });
+    await transitionDraftStatus(aliceDraft.id, "artwork_ready", alice);
+    await transitionDraftStatus(aliceDraft.id, "proof_pending", alice);
     await approveDraftProof(aliceDraft.id, alice);
     await saveDesign({ customer_id: alice.id, product_id: "prod-vinyl-sticker", name: "Alice art", width_mm: 60, height_mm: 60, material: "gloss-white", canvas_state: {} });
 
@@ -136,12 +138,12 @@ describe("Orders, isolation, admin search & reports (PRD § 05, § 10, § 11)", 
   it("reports count revenue from paid orders only, and the archive holds completed orders", async () => {
     const before = await getAdminReportsData();
     await createOrder(orderFor(alice, { payment_status: "pending", subtotal_cents: 50000, tax_cents: 9000, total_cents: 59000 }));
-    const { order: paid } = await createOrder(orderFor(alice, { subtotal_cents: 1000, tax_cents: 180, total_cents: 1180 }));
+    const { order: paid } = await createOrder(orderFor(alice, { subtotal_cents: 1000, tax_cents: 180, total_cents: 1180, approved_proof_version: 1 }));
     const after = await getAdminReportsData();
     assert.strictEqual(after.confirmedRevenueCents - before.confirmedRevenueCents, 1180);
     assert.strictEqual(after.currency, "INR");
 
-    for (const stage of ["ARTWORK", "PROOF", "PRODUCTION", "COMPLETED"] as const) {
+    for (const stage of ["ARTWORK", "PRODUCTION", "COMPLETED"] as const) {
       await updateOrderStageWithVersion(paid.order_number, stage, undefined, "admin@e2e.w2p.test");
     }
     const archive = await getArchivedOrders({ query: paid.order_number });

@@ -15,6 +15,12 @@ import { db } from "@/lib/supabase/server";
 const ACTOR = { id: "test-actor", email: "actor@e2e.w2p.test" };
 const created: string[] = [];
 
+/** Moves a fresh draft to proof_pending the way the designer does. */
+async function toReview(id: string) {
+  await transitionDraftStatus(id, "artwork_ready", ACTOR);
+  await transitionDraftStatus(id, "proof_pending", ACTOR);
+}
+
 async function newDraft(customerId?: string) {
   const draft = await createDraft({
     productId: "prod-vinyl-sticker",
@@ -71,6 +77,8 @@ describe("Job drafts (§ 01, § 05, § 06, § 08)", { skip: !hasDatabase }, () =
 
   it("records who approved which proof version, when, and its hash", async () => {
     const draft = await newDraft();
+    await assert.rejects(approveDraftProof(draft.id, ACTOR), /awaiting review/);
+    await toReview(draft.id);
     const approved = await approveDraftProof(draft.id, ACTOR);
     assert.strictEqual(approved.status, "proof_approved");
     const proof = approved.proofs.find((p) => p.version === 1)!;
@@ -82,6 +90,7 @@ describe("Job drafts (§ 01, § 05, § 06, § 08)", { skip: !hasDatabase }, () =
 
   it("a change request keeps v1 with feedback and opens v2 for review", async () => {
     const draft = await newDraft();
+    await toReview(draft.id);
     const revised = await requestDraftProofChanges(draft.id, "Make the logo bigger", ACTOR);
     assert.strictEqual(revised.status, "proof_pending");
     assert.strictEqual(revised.proofVersion, 2);

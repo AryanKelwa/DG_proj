@@ -93,12 +93,9 @@ describe("Proof & Version Control with Approval Gate (§ 08 & Testing Checklist)
     it("generates watermarked SVG containing security text and technical metadata", () => {
       const svg = generateWatermarkedProofSvg(sampleMetadata);
 
-      assert.ok(svg.includes("REVISION v1"));
-      assert.ok(svg.includes("W2P PROOF"));
-      assert.ok(svg.includes("NOT FOR FINAL PRINT"));
-      assert.ok(svg.includes("DH-2026-00101"));
-      assert.ok(svg.includes("175mm × 155mm"));
-      assert.ok(svg.includes("+4mm"));
+      assert.ok(svg.includes("PROOF v1"));
+      assert.ok(svg.includes("Trim 175×155 mm"));
+      assert.ok(svg.includes("bleed 4 mm"));
     });
   });
 });

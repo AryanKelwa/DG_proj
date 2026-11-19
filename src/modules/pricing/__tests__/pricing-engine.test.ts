@@ -1,160 +1,82 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { calculatePrintPrice } from "../pricing-engine";
-import { PRODUCTS } from "@/lib/data/mock-data";
+import { calculatePrintPrice, validateConfiguration, PricingValidationError } from "../pricing-engine";
+import { splitGst, isValidPinCode } from "../gst";
+import { Product } from "@/types/database";
 
-describe("Pricing Engine Unit Tests (§ 05 & Testing Checklist)", () => {
-  const stickerProduct = PRODUCTS.find((p) => p.id === "prod-vinyl-sticker")!;
+const TIERS = [
+  { min_quantity: 1, discount_percentage: 0 },
+  { min_quantity: 50, discount_percentage: 10 },
+  { min_quantity: 100, discount_percentage: 20 },
+  { min_quantity: 250, discount_percentage: 30 },
+  { min_quantity: 500, discount_percentage: 40 },
+  { min_quantity: 1000, discount_percentage: 50 },
+];
 
-  it("calculates minimum dimension boundary (25mm x 25mm)", () => {
-    const result = calculatePrintPrice({
-      product: stickerProduct,
-      widthMm: 25,
-      heightMm: 25,
-      materialId: "gloss-white",
-      quantity: 1,
-    });
+const product = {
+  id: "p", division_id: "d", division_slug: "labels-stickers", slug: "s", name: "Sticker", subtitle: "", description: "",
+  base_price_cents: 400, price_per_sq_cm_cents: 25,
+  min_width_mm: 25, max_width_mm: 350, min_height_mm: 25, max_height_mm: 350,
+  default_width_mm: 75, default_height_mm: 75, default_bleed_mm: 3, default_safety_margin_mm: 2.5,
+  allowed_materials: [
+    { id: "gloss", name: "Gloss", description: "", multiplier: 1 },
+    { id: "holo", name: "Holo", description: "", multiplier: 1.45 },
+  ],
+  allowed_orientations: ["square", "portrait", "landscape"], has_variable_data: false, image_url: "", is_active: true,
+  pricing_tiers: TIERS, gst_rate: 18,
+} as Product & { pricing_tiers: typeof TIERS; gst_rate: number };
 
-    // Area: (25 * 25) / 100 = 6.25 sq cm
-    assert.equal(result.areaSqCm, 6.25);
-    assert.equal(result.discountPercentage, 0);
-    assert.ok(result.discountedUnitPriceCents > 0);
-    assert.equal(result.subtotalCents, result.discountedUnitPriceCents * 1);
-    assert.equal(result.totalCents, result.subtotalCents + result.taxCents);
+const price = (quantity: number, extra: Partial<Parameters<typeof calculatePrintPrice>[0]> = {}) =>
+  calculatePrintPrice({ product, widthMm: 75, heightMm: 75, materialId: "gloss", quantity, ...extra });
+
+describe("Pricing engine (INR + GST)", () => {
+  it("unit = round((base + area × per-cm²) × multiplier)", () => {
+    const p = price(1);
+    assert.equal(p.areaSqCm, 56.25);
+    assert.equal(p.rawUnitPriceCents, 400 + Math.round(56.25 * 25));
+    assert.equal(price(1, { materialId: "holo" }).rawUnitPriceCents, Math.round((400 + 1406) * 1.45));
   });
 
-  it("calculates maximum dimension boundary (350mm x 350mm)", () => {
-    const result = calculatePrintPrice({
-      product: stickerProduct,
-      widthMm: 350,
-      heightMm: 350,
-      materialId: "gloss-white",
-      quantity: 10,
-    });
+  for (const [qty, pct] of [[49, 0], [50, 10], [99, 10], [100, 20], [250, 30], [500, 40], [1000, 50], [5000, 50]]) {
+    it(`quantity ${qty} gets ${pct}% discount`, () => assert.equal(price(qty).discountPercentage, pct));
+  }
 
-    // Area: (350 * 350) / 100 = 1225 sq cm
-    assert.equal(result.areaSqCm, 1225);
-    assert.ok(result.rawUnitPriceCents > stickerProduct.base_price_cents);
+  it("subtotal = discounted unit × quantity; total = subtotal + GST", () => {
+    const p = price(100);
+    assert.equal(p.subtotalCents, p.discountedUnitPriceCents * 100);
+    assert.equal(p.taxCents, Math.round(p.subtotalCents * 0.18));
+    assert.equal(p.totalCents, p.subtotalCents + p.taxCents);
+    assert.equal(p.currency, "INR");
+    assert.match(p.formatted.total, /^₹/);
   });
 
-  describe("Volume Discount Threshold Boundaries (§ 05)", () => {
-    it("boundary at qty 49: exactly 0% discount", () => {
-      const result = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 75,
-        heightMm: 75,
-        materialId: "gloss-white",
-        quantity: 49,
-      });
-      assert.equal(result.discountPercentage, 0);
-    });
-
-    it("boundary at qty 50: exactly 10% discount floor reached", () => {
-      const result = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 75,
-        heightMm: 75,
-        materialId: "gloss-white",
-        quantity: 50,
-      });
-      assert.equal(result.discountPercentage, 10);
-      const expectedDiscounted = Math.round(result.rawUnitPriceCents * 0.9);
-      assert.equal(result.discountedUnitPriceCents, expectedDiscounted);
-    });
-
-    it("boundary at qty 99: stays at 10% discount", () => {
-      const result = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 75,
-        heightMm: 75,
-        materialId: "gloss-white",
-        quantity: 99,
-      });
-      assert.equal(result.discountPercentage, 10);
-    });
-
-    it("boundary at qty 100: exactly 20% discount floor reached", () => {
-      const result = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 75,
-        heightMm: 75,
-        materialId: "gloss-white",
-        quantity: 100,
-      });
-      assert.equal(result.discountPercentage, 20);
-      const expectedDiscounted = Math.round(result.rawUnitPriceCents * 0.8);
-      assert.equal(result.discountedUnitPriceCents, expectedDiscounted);
-    });
-
-    it("boundary at qty 250: exactly 30% discount floor reached", () => {
-      const result = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 75,
-        heightMm: 75,
-        materialId: "gloss-white",
-        quantity: 250,
-      });
-      assert.equal(result.discountPercentage, 30);
-    });
-
-    it("boundary at qty 500: exactly 40% discount floor reached", () => {
-      const result = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 75,
-        heightMm: 75,
-        materialId: "gloss-white",
-        quantity: 500,
-      });
-      assert.equal(result.discountPercentage, 40);
-    });
-
-    it("boundary at qty 1000+: top 50% discount floor reached", () => {
-      const result = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 75,
-        heightMm: 75,
-        materialId: "gloss-white",
-        quantity: 1200,
-      });
-      assert.equal(result.discountPercentage, 50);
-    });
+  it("Delhi delivery → CGST + SGST; other states → IGST", () => {
+    const intra = price(100, { placeOfSupply: "07" });
+    assert.equal(intra.isInterState, false);
+    assert.equal(intra.cgstCents + intra.sgstCents, intra.taxCents);
+    assert.equal(intra.igstCents, 0);
+    const inter = price(100, { placeOfSupply: "27" });
+    assert.equal(inter.isInterState, true);
+    assert.equal(inter.igstCents, inter.taxCents);
+    assert.equal(inter.cgstCents + inter.sgstCents, 0);
   });
 
-  describe("Material Multipliers & VAT Accuracy", () => {
-    it("applies premium holographic material multiplier (1.45x)", () => {
-      const standard = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 75,
-        heightMm: 75,
-        materialId: "gloss-white",
-        quantity: 100,
-      });
+  it("splits odd tax amounts without losing a paisa", () => {
+    const s = splitGst(1001, 18, "07");
+    assert.equal(s.cgstCents + s.sgstCents, s.taxCents);
+  });
 
-      const holographic = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 75,
-        heightMm: 75,
-        materialId: "holographic",
-        quantity: 100,
-      });
+  it("rejects out-of-range size, unknown material and bad quantity", () => {
+    assert.match(validateConfiguration(product, { widthMm: 10, heightMm: 75, materialId: "gloss", quantity: 1 }) ?? "", /Width/);
+    assert.match(validateConfiguration(product, { widthMm: 75, heightMm: 900, materialId: "gloss", quantity: 1 }) ?? "", /Height/);
+    assert.match(validateConfiguration(product, { widthMm: 75, heightMm: 75, materialId: "nope", quantity: 1 }) ?? "", /Material/);
+    assert.match(validateConfiguration(product, { widthMm: 75, heightMm: 75, materialId: "gloss", quantity: 0 }) ?? "", /Quantity/);
+    assert.throws(() => price(-5), PricingValidationError);
+  });
 
-      assert.equal(holographic.materialMultiplier, 1.45);
-      assert.ok(holographic.discountedUnitPriceCents > standard.discountedUnitPriceCents);
-    });
-
-    it("calculates 20% VAT transparently with matching gross total", () => {
-      const result = calculatePrintPrice({
-        product: stickerProduct,
-        widthMm: 100,
-        heightMm: 100,
-        materialId: "gloss-white",
-        quantity: 100,
-      });
-
-      const expectedVat = Math.round(result.subtotalCents * 0.2);
-      assert.equal(result.taxCents, expectedVat);
-      assert.equal(result.totalCents, result.subtotalCents + result.taxCents);
-      assert.ok(result.formatted.total.includes("£"));
-    });
+  it("validates Indian PIN codes", () => {
+    assert.equal(isValidPinCode("110020"), true);
+    assert.equal(isValidPinCode("010020"), false);
+    assert.equal(isValidPinCode("SW1A 2AA"), false);
   });
 });
