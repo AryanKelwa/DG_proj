@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/server-auth";
-import { getOrderById, updateOrderStageWithVersion } from "@/modules/orders/order-store";
+import { getOrderById, updateOrderStageWithVersion, clearOrderApprovedProof } from "@/modules/orders/order-store";
 import { getDraft, generateDraftProof } from "@/modules/drafts/draft-store";
 import { supersedeEarlierProofs } from "@/modules/proofs/proofs-store";
 import { logAdminAction } from "@/modules/audit/audit-store";
@@ -41,6 +41,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
     unwrap(await db().from("drafts").update({ proof_version: nextVersion }).eq("id", draft.id), "Bump proof version");
     await supersedeEarlierProofs(draft.id, nextVersion);
+    // The customer must approve the revised proof before production can resume.
+    await clearOrderApprovedProof(order.id);
 
     const moved = await updateOrderStageWithVersion(order.order_number, "PROOF", "ARTWORK", auth.user.email, `Revised proof v${nextVersion} issued`);
     if (!moved.success) {

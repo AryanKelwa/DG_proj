@@ -287,8 +287,8 @@ export async function getOrderById(idOrOrderNumber: string): Promise<Order | nul
 }
 
 /**
- * Ready-for-production gate: true only when the proof is approved AND payment is confirmed.
- * (Tightened in Phase 9 so that reaching PRODUCTION never implies approval.)
+ * Ready-for-production gate: true only when payment is confirmed AND the customer
+ * approved a proof for this order. Reaching a pipeline stage never implies approval.
  */
 export function checkReadyForProduction(order: Order): {
   isReady: boolean;
@@ -296,11 +296,7 @@ export function checkReadyForProduction(order: Order): {
   proofApproved: boolean;
   paymentConfirmed: boolean;
 } {
-  const proofApproved =
-    order.proof_status === "approved" ||
-    !!order.approved_proof_version ||
-    order.pipeline_stage === "PRODUCTION" ||
-    order.pipeline_stage === "COMPLETED";
+  const proofApproved = !!order.approved_proof_version && order.proof_status !== "changes_requested";
   const paymentConfirmed = order.payment_status === "paid";
   const isReady = proofApproved && paymentConfirmed;
 
@@ -395,31 +391,53 @@ export async function searchAdminOrders(options: {
   return { orders, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
 }
 
-/** Pipeline sequence (PRD § 11): QUOTE → ORDER → ARTWORK → PROOF → PRODUCTION → COMPLETED. */
+/**
+ * Pipeline (PRD § 11): QUOTE → ORDER → ARTWORK → (PROOF) → PRODUCTION → COMPLETED.
+ *
+ * - QUOTE → ORDER happens when Stripe confirms payment.
+ * - ARTWORK is the pre-press check. The proof was approved before payment, so a
+ *   checked job goes ARTWORK → PRODUCTION; PROOF is used only when pre-press
+ *   issues a revised proof (ARTWORK → PROOF → PRODUCTION, or back to ARTWORK).
+ */
 const PIPELINE_SEQUENCE: PipelineStage[] = ["QUOTE", "ORDER", "ARTWORK", "PROOF", "PRODUCTION", "COMPLETED"];
+const ALLOWED_TRANSITIONS: Record<PipelineStage, PipelineStage[]> = {
+  QUOTE: ["ORDER"],
+  ORDER: ["ARTWORK"],
+  ARTWORK: ["PROOF", "PRODUCTION", "ORDER"],
+  PROOF: ["PRODUCTION", "ARTWORK"],
+  PRODUCTION: ["COMPLETED"],
+  COMPLETED: [],
+};
 
 export function validateStageTransition(current: PipelineStage, target: PipelineStage): { valid: boolean; error?: string } {
   if (current === target) return { valid: true };
-
-  const currentIndex = PIPELINE_SEQUENCE.indexOf(current);
-  const targetIndex = PIPELINE_SEQUENCE.indexOf(target);
-  if (currentIndex === -1 || targetIndex === -1) {
+  if (!PIPELINE_SEQUENCE.includes(current) || !PIPELINE_SEQUENCE.includes(target)) {
     return { valid: false, error: `Invalid pipeline stage: ${target}` };
   }
-  if (targetIndex === currentIndex + 1) return { valid: true };
-  if (current === "PROOF" && target === "ARTWORK") return { valid: true };
-  if (current === "ARTWORK" && target === "ORDER") return { valid: true };
+  if (ALLOWED_TRANSITIONS[current].includes(target)) return { valid: true };
 
-  if (targetIndex > currentIndex + 1) {
+  if (PIPELINE_SEQUENCE.indexOf(target) > PIPELINE_SEQUENCE.indexOf(current)) {
     return {
       valid: false,
-      error: `Stage skipping is not allowed. Cannot transition directly from ${current} to ${target}. Must proceed sequentially: ${PIPELINE_SEQUENCE.slice(currentIndex, targetIndex + 1).join(" -> ")}.`,
+      error: `Stage skipping is not allowed. Cannot transition directly from ${current} to ${target}. Allowed next stages: ${ALLOWED_TRANSITIONS[current].join(", ") || "none"}.`,
     };
   }
   return {
     valid: false,
     error: `Illegal backward transition from ${current} to ${target}. Only PROOF -> ARTWORK and ARTWORK -> ORDER are permitted for pre-press revisions.`,
   };
+}
+
+/** Business preconditions for entering a stage (beyond the transition graph). */
+export function checkStagePreconditions(order: Order, target: PipelineStage): string | null {
+  if (target === "ORDER" && order.payment_status !== "paid") {
+    return "An order only leaves QUOTE once Stripe has confirmed the payment.";
+  }
+  if (target === "PRODUCTION" || target === "COMPLETED") {
+    const gate = checkReadyForProduction(order);
+    if (!gate.isReady) return `Not ready for production: ${gate.reason}.`;
+  }
+  return null;
 }
 
 /**
@@ -447,6 +465,8 @@ export async function updateOrderStageWithVersion(
 
   const transition = validateStageTransition(existing.pipeline_stage, newStage);
   if (!transition.valid) return { success: false, error: transition.error };
+  const precondition = checkStagePreconditions(existing, newStage);
+  if (precondition) return { success: false, error: precondition };
 
   const fromStage = existing.pipeline_stage;
   const updated = unwrap(
@@ -597,5 +617,13 @@ export async function setOrderApprovedProof(orderId: string, version: number, sh
   unwrap(
     await db().from("orders").update({ approved_proof_version: version, approved_proof_sha256: sha256 }).eq("id", orderId),
     "Record approved proof"
+  );
+}
+
+/** A change request withdraws the earlier approval: production stays locked until a new proof is approved. */
+export async function clearOrderApprovedProof(orderId: string): Promise<void> {
+  unwrap(
+    await db().from("orders").update({ approved_proof_version: null, approved_proof_sha256: null }).eq("id", orderId),
+    "Clear approved proof"
   );
 }

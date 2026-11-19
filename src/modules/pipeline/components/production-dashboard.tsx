@@ -1,7 +1,7 @@
 "use client";
 import { formatINR } from "@/modules/pricing/gst";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -83,7 +83,10 @@ export function ProductionDashboardView() {
   }, [user, role, isLoading, router]);
 
   // Fetch Orders from Server-Side Admin API (Layer 2 Server Check)
+  const ordersRequestRef = useRef(0);
   const fetchOrders = useCallback(async () => {
+    // Ignore responses to older requests so a slow reply cannot overwrite newer filters.
+    const requestId = ++ordersRequestRef.current;
     setIsOrdersLoading(true);
     setOrdersError(null);
     try {
@@ -109,6 +112,7 @@ export function ProductionDashboardView() {
       }
 
       const data = await res.json();
+      if (requestId !== ordersRequestRef.current) return;
       setOrders(data.orders || []);
       setTotalOrders(data.total || 0);
       setTotalPages(data.totalPages || 1);
@@ -328,6 +332,8 @@ export function ProductionDashboardView() {
           base_price_cents: Number(editingProduct.base_price_cents),
           price_per_sq_cm_cents: Number(editingProduct.price_per_sq_cm_cents),
           pricing_tiers: editingProduct.pricing_tiers,
+          gst_rate: Number(editingProduct.gst_rate ?? 18),
+          hsn_code: editingProduct.hsn_code || null,
         }),
       });
 
@@ -1025,6 +1031,38 @@ export function ProductionDashboardView() {
                       className="mt-1"
                       required
                     />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="gst-rate" className="text-xs font-semibold text-neutral-700">
+                        GST rate (%)
+                      </Label>
+                      <select
+                        id="gst-rate"
+                        value={editingProduct.gst_rate ?? 18}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, gst_rate: Number(e.target.value) })}
+                        className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {[0, 5, 12, 18, 28].map((r) => (
+                          <option key={r} value={r}>
+                            {r}%
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="hsn-code" className="text-xs font-semibold text-neutral-700">
+                        HSN code
+                      </Label>
+                      <Input
+                        id="hsn-code"
+                        value={editingProduct.hsn_code ?? ""}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, hsn_code: e.target.value.replace(/\D/g, "").slice(0, 8) })}
+                        inputMode="numeric"
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
 
                   <div>

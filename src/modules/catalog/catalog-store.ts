@@ -168,6 +168,10 @@ function validateProductFields(p: Partial<ExtendedProduct>): string | null {
   if (p.price_per_sq_cm_cents !== undefined && p.price_per_sq_cm_cents < 0) return "Price per sq cm cannot be negative.";
   if (p.min_width_mm !== undefined && p.min_width_mm <= 0) return "Minimum width must be greater than 0 mm.";
   if (p.min_height_mm !== undefined && p.min_height_mm <= 0) return "Minimum height must be greater than 0 mm.";
+  if (p.gst_rate !== undefined && ![0, 5, 12, 18, 28].includes(Number(p.gst_rate))) return "GST rate must be one of 0, 5, 12, 18 or 28%.";
+  if (p.hsn_code !== undefined && p.hsn_code !== null && !/^\d{4,8}$/.test(p.hsn_code)) return "HSN code must be 4 to 8 digits.";
+  if (p.max_width_mm !== undefined && p.min_width_mm !== undefined && p.max_width_mm < p.min_width_mm) return "Maximum width must not be below the minimum.";
+  if (p.max_height_mm !== undefined && p.min_height_mm !== undefined && p.max_height_mm < p.min_height_mm) return "Maximum height must not be below the minimum.";
   if (p.pricing_tiers !== undefined) {
     const tiers = validatePricingTiers(p.pricing_tiers);
     if (!tiers.valid) return tiers.error!;
