@@ -1,3 +1,4 @@
+import { formatINR } from "@/modules/pricing/gst";
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { generateXeroInvoicePayload } from "@/modules/orders/xero-generator";
@@ -109,19 +110,19 @@ export async function POST(req: NextRequest) {
         event: "order_confirmed",
         orderId: savedOrder.id,
         orderNumber: savedOrder.order_number,
-        totalFormatted: `£${(savedOrder.total_cents / 100).toFixed(2)}`,
+        totalFormatted: `${formatINR(savedOrder.total_cents)}`,
         shippingAddress: savedOrder.shipping_address,
         items: savedOrder.items?.map((it) => ({
           name: it.product_name,
           quantity: it.quantity,
-          amount: `£${(it.total_price_cents / 100).toFixed(2)}`,
+          amount: `${formatINR(it.total_price_cents)}`,
           dimensions: `${it.width_mm}mm × ${it.height_mm}mm`,
           material: it.material,
         })) || [
           {
             name: metadata.productName || "Custom Die-Cut Vinyl Print Run",
             quantity: Number(metadata.quantity) || 100,
-            amount: `£${(savedOrder.total_cents / 100).toFixed(2)}`,
+            amount: `${formatINR(savedOrder.total_cents)}`,
           },
         ],
       });

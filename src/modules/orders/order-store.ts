@@ -51,6 +51,11 @@ interface OrderRow {
   payment_status: Order["payment_status"];
   currency: string;
   subtotal_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  igst_paise: number;
+  place_of_supply: string | null;
+  customer_gstin: string | null;
   tax_paise: number;
   total_paise: number;
   shipping_address: Order["shipping_address"];
@@ -95,6 +100,11 @@ function toOrder(row: OrderRow): Order {
     payment_status: row.payment_status,
     subtotal_cents: row.subtotal_paise,
     tax_cents: row.tax_paise,
+    cgst_cents: row.cgst_paise,
+    sgst_cents: row.sgst_paise,
+    igst_cents: row.igst_paise,
+    place_of_supply: row.place_of_supply,
+    customer_gstin: row.customer_gstin,
     total_cents: row.total_paise,
     currency: row.currency,
     division_slug: row.division_slug ?? undefined,
@@ -174,10 +184,15 @@ export async function createOrder(
     throw new Error("A complete shipping address is required.");
   }
 
-  // Interim GST split until Phase 3: the seller is in Delhi and the place of
-  // supply is not captured yet, so tax is recorded as intra-state CGST + SGST.
-  const cgst = Math.floor(order.tax_cents / 2);
-  const sgst = order.tax_cents - cgst;
+  // GST split: callers pass the split computed for the place of supply; when it
+  // is missing (legacy callers) the tax is treated as intra-state CGST + SGST.
+  const hasSplit = order.cgst_cents !== undefined || order.igst_cents !== undefined;
+  const cgst = hasSplit ? order.cgst_cents ?? 0 : Math.floor(order.tax_cents / 2);
+  const sgst = hasSplit ? order.sgst_cents ?? 0 : order.tax_cents - cgst;
+  const igst = hasSplit ? order.igst_cents ?? 0 : 0;
+  if (cgst + sgst + igst !== order.tax_cents) {
+    throw new Error("GST components do not add up to the tax total.");
+  }
 
   const inserted = unwrap(
     await db()
@@ -195,7 +210,9 @@ export async function createOrder(
         subtotal_paise: order.subtotal_cents,
         cgst_paise: cgst,
         sgst_paise: sgst,
-        igst_paise: 0,
+        igst_paise: igst,
+        place_of_supply: order.place_of_supply ?? null,
+        customer_gstin: order.customer_gstin ?? null,
         tax_paise: order.tax_cents,
         total_paise: order.subtotal_cents + order.tax_cents,
         shipping_address: {
@@ -203,8 +220,11 @@ export async function createOrder(
           line1: addr.line1.trim(),
           line2: addr.line2?.trim() || undefined,
           city: addr.city.trim(),
+          state: addr.state?.trim() || undefined,
+          state_code: addr.state_code || undefined,
           postal_code: addr.postal_code.trim().toUpperCase(),
           country: addr.country.trim(),
+          phone: addr.phone?.trim() || undefined,
         },
         approved_proof_version: order.approved_proof_version ?? order.proof_version ?? null,
         stripe_session_id: order.stripe_session_id ?? null,

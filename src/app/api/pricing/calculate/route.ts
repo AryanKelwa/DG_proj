@@ -1,61 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { calculatePrintPrice } from "@/modules/pricing/pricing-engine";
-import { getProductById } from "@/modules/catalog/catalog-store";
 import { z } from "zod";
+import { calculatePrintPrice, PricingValidationError } from "@/modules/pricing/pricing-engine";
+import { getProductById } from "@/modules/catalog/catalog-store";
 
 const PricingRequestSchema = z.object({
-  productId: z.string(),
+  productId: z.string().min(1),
   widthMm: z.number().positive(),
   heightMm: z.number().positive(),
-  materialId: z.string(),
+  materialId: z.string().min(1),
   quantity: z.number().int().positive(),
+  placeOfSupply: z.string().regex(/^\d{2}$/).optional(),
 });
 
+/** Public instant price (PRD § 05). Uses the live catalogue and the same engine as checkout. */
 export async function POST(req: NextRequest) {
+  const validated = PricingRequestSchema.safeParse(await req.json().catch(() => null));
+  if (!validated.success) {
+    return NextResponse.json({ error: "Invalid pricing parameters", details: validated.error.format() }, { status: 400 });
+  }
+
   try {
-    const body = await req.json();
-    const validated = PricingRequestSchema.safeParse(body);
-
-    if (!validated.success) {
-      return NextResponse.json(
-        { error: "Invalid pricing parameters", details: validated.error.format() },
-        { status: 400 }
-      );
-    }
-
-    const { productId, widthMm, heightMm, materialId, quantity } = validated.data;
-    const product = await getProductById(productId);
-
+    const product = await getProductById(validated.data.productId);
     if (!product || !product.is_active) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
-
-    // Dimensional limits check (§ 04)
-    if (widthMm < product.min_width_mm || widthMm > product.max_width_mm) {
-      return NextResponse.json(
-        { error: `Width must be between ${product.min_width_mm}mm and ${product.max_width_mm}mm` },
-        { status: 422 }
-      );
-    }
-
-    if (heightMm < product.min_height_mm || heightMm > product.max_height_mm) {
-      return NextResponse.json(
-        { error: `Height must be between ${product.min_height_mm}mm and ${product.max_height_mm}mm` },
-        { status: 422 }
-      );
-    }
-
-    const breakdown = calculatePrintPrice({
-      product,
-      widthMm,
-      heightMm,
-      materialId,
-      quantity,
-    });
-
-    return NextResponse.json(breakdown);
+    return NextResponse.json(calculatePrintPrice({ product, ...validated.data }));
   } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    if (err instanceof PricingValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 422 });
+    }
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

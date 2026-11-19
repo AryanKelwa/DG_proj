@@ -47,7 +47,7 @@ export interface Product {
   name: string;
   subtitle: string;
   description: string;
-  base_price_cents: number; // in cents/pence, e.g. 250 = £2.50
+  base_price_cents: number; // minor units (paise), e.g. 250 = ₹2.50
   price_per_sq_cm_cents: number;
   min_width_mm: number;
   max_width_mm: number;
@@ -89,7 +89,12 @@ export interface Order {
   pipeline_stage: PipelineStage;
   payment_status: PaymentStatus;
   subtotal_cents: number;
-  tax_cents: number; // VAT (e.g. 20%)
+  tax_cents: number; // total GST
+  cgst_cents?: number;
+  sgst_cents?: number;
+  igst_cents?: number;
+  place_of_supply?: string | null; // GST state code of the delivery address
+  customer_gstin?: string | null;
   total_cents: number;
   currency: string;
   division_slug?: DivisionSlug;
@@ -108,8 +113,11 @@ export interface Order {
     line1: string;
     line2?: string;
     city: string;
+    state?: string;
+    state_code?: string;
     postal_code: string;
     country: string;
+    phone?: string;
   };
   xero_invoice_data?: {
     type: "ACCREC";

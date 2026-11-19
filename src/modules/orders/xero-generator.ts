@@ -17,7 +17,7 @@ export interface XeroLineItem {
   Quantity: number;
   UnitAmount: number;
   AccountCode: string; // e.g. '200' for Sales
-  TaxType: string; // e.g. 'OUTPUT2' for 20% standard VAT
+  TaxType: string; // Xero India tax rate name, e.g. "GST18" (intra-state) or "IGST18" (inter-state)
   TaxAmount: number;
   LineAmount: number;
 }
@@ -35,14 +35,22 @@ export interface XeroInvoicePayload {
   SubTotal: number;
   TotalTax: number;
   Total: number;
-  CurrencyCode: "GBP";
+  CurrencyCode: "INR";
 }
 
 /**
  * Transforms an internal W2P Order into a Xero-compliant
  * Accounting API JSON payload (§ 05 & § 14).
  */
+/** Tax rate label for a line: Xero India organisations use separate GST/IGST rates. */
+function taxType(order: Order, rate: number): string {
+  return `${(order.igst_cents ?? 0) > 0 ? "IGST" : "GST"}${Math.round(rate)}`;
+}
+
 export function generateXeroInvoicePayload(order: Order, items?: OrderItem[]): XeroInvoicePayload {
+  items = items ?? order.items;
+  // Effective GST rate of the order, used to apportion tax across lines.
+  const rate = order.subtotal_cents > 0 ? (order.tax_cents / order.subtotal_cents) * 100 : 0;
   const invoiceNumber = `INV-${order.order_number}`;
   const now = new Date(order.created_at);
   const dueDate = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000); // Net 14 terms
@@ -51,14 +59,14 @@ export function generateXeroInvoicePayload(order: Order, items?: OrderItem[]): X
     ? items.map((item) => {
         const unitAmount = Number((item.unit_price_cents / 100).toFixed(2));
         const lineAmount = Number((item.total_price_cents / 100).toFixed(2));
-        const taxAmount = Number((lineAmount * 0.20).toFixed(2));
+        const taxAmount = Number(((lineAmount * rate) / 100).toFixed(2));
 
         return {
           Description: `${item.product_name} (${item.width_mm}x${item.height_mm}mm, ${item.material})`,
           Quantity: item.quantity,
           UnitAmount: unitAmount,
           AccountCode: "200", // Standard Sales Account
-          TaxType: "OUTPUT2", // 20% UK VAT
+          TaxType: taxType(order, rate),
           TaxAmount: taxAmount,
           LineAmount: lineAmount,
         };
@@ -69,7 +77,7 @@ export function generateXeroInvoicePayload(order: Order, items?: OrderItem[]): X
           Quantity: 1,
           UnitAmount: Number((order.subtotal_cents / 100).toFixed(2)),
           AccountCode: "200",
-          TaxType: "OUTPUT2",
+          TaxType: taxType(order, rate),
           TaxAmount: Number((order.tax_cents / 100).toFixed(2)),
           LineAmount: Number((order.subtotal_cents / 100).toFixed(2)),
         },
@@ -100,6 +108,6 @@ export function generateXeroInvoicePayload(order: Order, items?: OrderItem[]): X
     SubTotal: Number((order.subtotal_cents / 100).toFixed(2)),
     TotalTax: Number((order.tax_cents / 100).toFixed(2)),
     Total: Number((order.total_cents / 100).toFixed(2)),
-    CurrencyCode: "GBP",
+    CurrencyCode: "INR",
   };
 }

@@ -74,8 +74,8 @@ test.describe("W3. Configurator & Live Pricing Engine (PRD §04, §05)", () => {
 
     // Assert server calculates VAT and volume discount
     expect(serverBreakdown.discountPercentage).toBe(20);
-    expect(serverBreakdown.vatRatePercentage).toBe(20);
-    expect(serverBreakdown.totalGrossCents).toBeGreaterThan(0);
+    expect(serverBreakdown.gstRatePercentage).toBe(20);
+    expect(serverBreakdown.totalCents).toBeGreaterThan(0);
 
     // 2. Open calculator and set identical values
     await page.goto("/calculator");

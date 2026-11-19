@@ -6,7 +6,7 @@ export const revalidate = 60;
 
 export const metadata = {
   title: "Instant Price Calculator · W2P Print House",
-  description: "Live instant pricing by dimensions, material multiplier, and automated volume discount floors. Fully transparent with VAT breakdown.",
+  description: "Live instant pricing by dimensions, material multiplier, and automated volume discount floors. Fully transparent with GST breakdown.",
 };
 
 export default async function CalculatorPage() {

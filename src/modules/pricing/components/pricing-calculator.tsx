@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import type { ExtendedProduct } from "@/modules/catalog/catalog-store";
-import { calculatePrintPrice } from "@/modules/pricing/pricing-engine";
+import { calculatePrintPrice, validateConfiguration, MAX_QUANTITY } from "@/modules/pricing/pricing-engine";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -45,14 +45,24 @@ export function PricingCalculator({ products: PRODUCTS }: { products: ExtendedPr
   };
 
   const pricing = useMemo(() => {
+    // While the customer is typing, out-of-range values are clamped for the live
+    // price and the problem is shown; continuing is blocked until it is fixed.
+    const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Number.isFinite(v) ? v : min));
     return calculatePrintPrice({
       product: selectedProduct,
-      widthMm,
-      heightMm,
-      materialId,
-      quantity,
+      widthMm: clamp(widthMm, selectedProduct.min_width_mm, selectedProduct.max_width_mm),
+      heightMm: clamp(heightMm, selectedProduct.min_height_mm, selectedProduct.max_height_mm),
+      materialId: selectedProduct.allowed_materials.some((m) => m.id === materialId)
+        ? materialId
+        : selectedProduct.allowed_materials[0]?.id ?? materialId,
+      quantity: Math.round(clamp(quantity, 1, MAX_QUANTITY)),
     });
   }, [selectedProduct, widthMm, heightMm, materialId, quantity]);
+
+  const configError = useMemo(
+    () => validateConfiguration(selectedProduct, { widthMm, heightMm, materialId, quantity }),
+    [selectedProduct, widthMm, heightMm, materialId, quantity]
+  );
 
   const handleContinueToDesigner = async () => {
     setIsSubmitting(true);
@@ -266,7 +276,7 @@ export function PricingCalculator({ products: PRODUCTS }: { products: ExtendedPr
                 <span>INSTANT QUOTE MATRIX</span>
               </div>
               <Badge variant="outline" className="border-industrial-700 text-[10px] text-emerald-400 font-mono">
-                VAT INCLUSIVE BREAKDOWN
+                GST-INCLUSIVE BREAKDOWN
               </Badge>
             </div>
 
@@ -306,20 +316,25 @@ export function PricingCalculator({ products: PRODUCTS }: { products: ExtendedPr
                 <span className="text-white font-semibold">{pricing.formatted.subtotal}</span>
               </div>
               <div className="flex justify-between text-industrial-300">
-                <span>VAT ({pricing.vatRatePercentage}%):</span>
-                <span className="text-white font-semibold">{pricing.formatted.vatAmount}</span>
+                <span>GST ({pricing.gstRatePercentage}%):</span>
+                <span className="text-white font-semibold">{pricing.formatted.tax}</span>
               </div>
               <div className="flex justify-between text-sm font-bold border-t border-industrial-800 pt-3 text-white">
                 <span>Total Gross:</span>
-                <span className="text-brand-400 text-lg">{pricing.formatted.totalGross}</span>
+                <span className="text-brand-400 text-lg">{pricing.formatted.total}</span>
               </div>
             </div>
 
             {/* Action Buttons (§ 01, § 03, § 05, § 06: Payment appears only after proof approval) */}
             <div className="pt-2">
+              {configError && (
+                <p role="alert" className="text-sm text-red-400" data-testid="config-error">
+                  {configError}
+                </p>
+              )}
               <Button
                 onClick={handleContinueToDesigner}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !!configError}
                 className="w-full h-12 text-base font-semibold shadow-glow"
               >
                 {isSubmitting ? (

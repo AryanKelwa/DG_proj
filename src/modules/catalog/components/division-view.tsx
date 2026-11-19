@@ -1,3 +1,4 @@
+import { formatINR } from "@/modules/pricing/gst";
 import Link from "next/link";
 import { Division, Product } from "@/types/database";
 import { Card, CardContent } from "@/components/ui/card";
@@ -114,7 +115,7 @@ export function DivisionView({ division, products }: DivisionViewProps) {
                   <div>
                     <span className="text-[10px] font-mono text-muted-foreground block">STARTING RATE</span>
                     <span className="font-mono font-bold text-sm text-foreground">
-                      £{(prod.base_price_cents / 100).toFixed(2)} / unit
+                      {formatINR(prod.base_price_cents)} / unit
                     </span>
                   </div>
                   <Button asChild size="sm" className="font-semibold">

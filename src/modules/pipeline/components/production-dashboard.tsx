@@ -1,4 +1,5 @@
 "use client";
+import { formatINR } from "@/modules/pricing/gst";
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -347,9 +348,6 @@ export function ProductionDashboardView() {
     }
   };
 
-  // Format GBP
-  const formatGBP = (cents: number) =>
-    new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(cents / 100);
 
   // If user is not admin, show access denied state
   if (!isLoading && (!user || role !== "admin")) {
@@ -660,7 +658,7 @@ export function ProductionDashboardView() {
                               {ord.customer_name || ord.customer_email}
                             </div>
                             <div className="text-[11px] text-neutral-400">
-                              {new Date(ord.created_at).toLocaleDateString("en-GB", {
+                              {new Date(ord.created_at).toLocaleDateString("en-IN", {
                                 day: "numeric",
                                 month: "short",
                                 year: "numeric",
@@ -735,7 +733,7 @@ export function ProductionDashboardView() {
 
                           {/* Total Gross */}
                           <td className="py-4 px-4 text-right font-semibold text-neutral-900" data-testid="admin-order-total">
-                            {formatGBP(ord.total_cents)}
+                            {formatINR(ord.total_cents)}
                           </td>
 
                           {/* Actions */}
@@ -939,7 +937,7 @@ export function ProductionDashboardView() {
                           {prod.division_slug}
                         </Badge>
                         <span className="text-xs font-semibold text-[#FF5A1F]">
-                          {formatGBP(prod.base_price_cents)} base
+                          {formatINR(prod.base_price_cents)} base
                         </span>
                       </div>
                       <CardTitle className="text-base mt-2">{prod.name}</CardTitle>
@@ -948,7 +946,7 @@ export function ProductionDashboardView() {
                     <CardContent className="pt-0 space-y-2">
                       <div className="text-xs text-neutral-600 flex justify-between">
                         <span>Price per sq cm:</span>
-                        <span className="font-semibold">{formatGBP(prod.price_per_sq_cm_cents)}</span>
+                        <span className="font-semibold">{formatINR(prod.price_per_sq_cm_cents)}</span>
                       </div>
                       <div className="text-xs text-neutral-600 flex justify-between">
                         <span>Print area:</span>
@@ -996,7 +994,7 @@ export function ProductionDashboardView() {
                 <form onSubmit={handleSaveProduct} className="space-y-4 mt-4">
                   <div>
                     <Label htmlFor="base-price" className="text-xs font-semibold text-neutral-700">
-                      Base Price (pence/cents)
+                      Base Price (paise)
                     </Label>
                     <Input
                       id="base-price"
@@ -1014,7 +1012,7 @@ export function ProductionDashboardView() {
 
                   <div>
                     <Label htmlFor="sq-cm-price" className="text-xs font-semibold text-neutral-700">
-                      Price per Sq Cm (pence/cents)
+                      Price per Sq Cm (paise)
                     </Label>
                     <Input
                       id="sq-cm-price"
@@ -1198,7 +1196,7 @@ export function ProductionDashboardView() {
                                 {metrics.totalQuantity} units
                               </td>
                               <td className="py-2.5 px-4 text-right font-semibold text-neutral-900">
-                                {formatGBP(metrics.revenueCents)}
+                                {formatINR(metrics.revenueCents)}
                               </td>
                             </tr>
                           ))}
@@ -1249,10 +1247,10 @@ export function ProductionDashboardView() {
                           <div className="text-xs text-neutral-500">{ord.customer_name || ord.customer_email}</div>
                         </td>
                         <td className="py-3 px-4 text-xs text-neutral-600">
-                          {new Date(ord.updated_at || ord.created_at).toLocaleDateString("en-GB")}
+                          {new Date(ord.updated_at || ord.created_at).toLocaleDateString("en-IN")}
                         </td>
                         <td className="py-3 px-4 text-right font-semibold text-neutral-900">
-                          {formatGBP(ord.total_cents)}
+                          {formatINR(ord.total_cents)}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <Button
@@ -1334,15 +1332,15 @@ export function ProductionDashboardView() {
                   <div className="font-bold text-neutral-900 capitalize mt-0.5">{selectedOrderDetail.payment_status}</div>
                 </div>
                 <div className="p-2.5 border border-neutral-200 rounded-lg">
-                  <div className="text-[11px] text-neutral-500">Net / VAT (20%)</div>
+                  <div className="text-[11px] text-neutral-500">Net / GST</div>
                   <div className="font-bold text-neutral-900 mt-0.5">
-                    {formatGBP(selectedOrderDetail.subtotal_cents)} / {formatGBP(selectedOrderDetail.tax_cents)}
+                    {formatINR(selectedOrderDetail.subtotal_cents)} / {formatINR(selectedOrderDetail.tax_cents)}
                   </div>
                 </div>
                 <div className="p-2.5 border border-neutral-200 rounded-lg bg-neutral-50">
                   <div className="text-[11px] text-neutral-500">Total Gross</div>
                   <div className="font-bold text-neutral-900 mt-0.5">
-                    {formatGBP(selectedOrderDetail.total_cents)}
+                    {formatINR(selectedOrderDetail.total_cents)}
                   </div>
                 </div>
               </div>

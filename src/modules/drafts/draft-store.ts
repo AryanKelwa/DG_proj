@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { db, unwrap } from "@/lib/supabase/server";
 import { JobDraft, DraftStatus, DraftAuditLogEntry, DraftProofRecord, DraftOptions } from "@/types/draft";
 import { DivisionSlug } from "@/types/database";
-import { calculatePrintPrice, PricingBreakdown } from "@/modules/pricing/pricing-engine";
+import { calculatePrintPrice, PricingBreakdown, PricingValidationError, validateConfiguration } from "@/modules/pricing/pricing-engine";
 import { generateWatermarkedProofSvg } from "@/modules/proofs/proof-generator";
 import { ExtendedProduct, getProductById } from "@/modules/catalog/catalog-store";
 
@@ -158,9 +158,11 @@ export interface CreateDraftInput {
 
 export async function createDraft(input: CreateDraftInput): Promise<JobDraft> {
   const product = await getProductById(input.productId);
-  if (!product) {
+  if (!product || !product.is_active) {
     throw new Error(`Product '${input.productId}' not found`);
   }
+  const problem = validateConfiguration(product, input);
+  if (problem) throw new PricingValidationError(problem);
 
   const row = unwrap(
     await db()
@@ -410,7 +412,7 @@ export async function attachDraftToUser(draftId: string, userId: string, userEma
 }
 
 /** Server-authoritative price for a draft, recalculated from the catalogue. */
-export async function calculateDraftPrice(draft: JobDraft): Promise<PricingBreakdown> {
+export async function calculateDraftPrice(draft: JobDraft, placeOfSupply?: string | null): Promise<PricingBreakdown> {
   const product = await getProductById(draft.productId);
   if (!product) throw new Error(`Product '${draft.productId}' for draft ${draft.id} no longer exists`);
   return calculatePrintPrice({
@@ -419,5 +421,6 @@ export async function calculateDraftPrice(draft: JobDraft): Promise<PricingBreak
     heightMm: draft.options.heightMm,
     materialId: draft.options.materialId,
     quantity: draft.quantity,
+    placeOfSupply,
   });
 }

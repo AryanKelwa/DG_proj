@@ -1,4 +1,5 @@
 "use client";
+import { formatINR } from "@/modules/pricing/gst";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -222,7 +223,7 @@ export function CustomerDashboardView() {
               Payment Confirmed & Order #{checkoutSuccessOrder} Placed!
             </h3>
             <p className="text-xs text-muted-foreground leading-relaxed font-sans">
-              Your transactional single-order payment has been processed securely. The job has officially entered the <strong>ORDER</strong> stage in our production pipeline. A VAT tax invoice is ready below.
+              Your transactional single-order payment has been processed securely. The job has officially entered the <strong>ORDER</strong> stage in our production pipeline. A GST tax invoice is ready below.
             </p>
           </div>
         </div>
@@ -342,7 +343,7 @@ export function CustomerDashboardView() {
               <ShoppingBag className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
               <h3 className="font-heading font-bold text-base text-foreground mb-1">No Orders Placed Yet</h3>
               <p className="text-xs text-muted-foreground max-w-sm mx-auto mb-4">
-                Custom print jobs, manufacturing status updates, and downloadable VAT tax invoices will appear here once you place an order.
+                Custom print jobs, manufacturing status updates, and downloadable GST tax invoices will appear here once you place an order.
               </p>
               <Button asChild size="sm" className="text-xs font-semibold bg-brand-500 hover:bg-brand-600">
                 <Link href="/#divisions">Browse Products & Catalog</Link>
@@ -377,7 +378,7 @@ export function CustomerDashboardView() {
                         </div>
 
                         <div className="text-xs text-muted-foreground font-mono space-y-0.5">
-                          <div>Placed: {new Date(ord.created_at).toLocaleDateString("en-GB", { dateStyle: "medium" })}</div>
+                          <div>Placed: {new Date(ord.created_at).toLocaleDateString("en-IN", { dateStyle: "medium" })}</div>
                           <div data-testid="order-shipping-address">
                             Shipping to: {ord.shipping_address?.line1}, {ord.shipping_address?.city}, {ord.shipping_address?.postal_code}, {ord.shipping_address?.country}
                           </div>
@@ -386,9 +387,9 @@ export function CustomerDashboardView() {
 
                       <div className="flex flex-wrap items-center gap-3 pt-2 lg:pt-0 border-t lg:border-t-0">
                         <div className="text-right mr-2">
-                          <span className="text-[10px] font-mono text-muted-foreground block">TOTAL (INC. VAT)</span>
+                          <span className="text-[10px] font-mono text-muted-foreground block">TOTAL (INC. GST)</span>
                           <span className="font-mono font-bold text-lg text-foreground">
-                            £{(ord.total_cents / 100).toFixed(2)}
+                            {formatINR(ord.total_cents)}
                           </span>
                         </div>
 
@@ -400,7 +401,7 @@ export function CustomerDashboardView() {
                             window.open(`/api/orders/${ord.order_number}/invoice`, "_blank");
                           }}
                           className="text-xs font-mono"
-                          title="Download Xero-compliant VAT invoice PDF"
+                          title="Download Xero-compliant GST invoice PDF"
                         >
                           <Receipt className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                           Invoice PDF
@@ -500,7 +501,7 @@ export function CustomerDashboardView() {
                       {prf.approved_at && (
                         <div className="p-3 rounded bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 text-emerald-800 dark:text-emerald-300 text-xs font-mono">
                           <span className="font-bold block">Approved for Manufacture:</span>
-                          {new Date(prf.approved_at).toLocaleString("en-GB")}
+                          {new Date(prf.approved_at).toLocaleString("en-IN")}
                         </div>
                       )}
                     </CardContent>

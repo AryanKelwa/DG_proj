@@ -4,6 +4,7 @@ import { DesignerPageView } from "@/modules/designer/components/designer-page-vi
 import { getDraft, createDraft, getDraftGuestTokenHash } from "@/modules/drafts/draft-store";
 import { getPageUser, getPageGuestToken } from "@/lib/server-auth";
 import { hashGuestToken } from "@/lib/draft-access";
+import { validateConfiguration } from "@/modules/pricing/pricing-engine";
 import { getProductBySlug } from "@/modules/catalog/catalog-store";
 
 // Always rendered per request: every visit works on its own draft.
@@ -35,10 +36,22 @@ export default async function DesignerPage({
   }
 
   if (!draft) {
-    const width = Number(sParams.w) || product.default_width_mm;
-    const height = Number(sParams.h) || product.default_height_mm;
-    const material = sParams.mat || product.allowed_materials[0]?.id || "default";
-    const qty = Number(sParams.qty) || 100;
+    // Values from the URL are only used when they form a producible configuration.
+    const requested = {
+      widthMm: Number(sParams.w) || product.default_width_mm,
+      heightMm: Number(sParams.h) || product.default_height_mm,
+      materialId: sParams.mat || product.allowed_materials[0]?.id || "default",
+      quantity: Number(sParams.qty) || 100,
+    };
+    const config = validateConfiguration(product, requested)
+      ? {
+          widthMm: product.default_width_mm,
+          heightMm: product.default_height_mm,
+          materialId: product.allowed_materials[0]?.id || "default",
+          quantity: 100,
+        }
+      : requested;
+    const { widthMm: width, heightMm: height, materialId: material, quantity: qty } = config;
 
     draft = await createDraft({
       productId: product.id,

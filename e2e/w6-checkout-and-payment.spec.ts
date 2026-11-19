@@ -52,8 +52,8 @@ test.describe("W6. Checkout & Payment Engine (PRD §05)", () => {
     });
 
     if (body.pricing) {
-      expect(body.pricing.totalGrossCents).toBe(expectedPricing.totalGrossCents);
-      expect(body.pricing.totalGrossCents).not.toBe(1);
+      expect(body.pricing.totalCents).toBe(expectedPricing.totalCents);
+      expect(body.pricing.totalCents).not.toBe(1);
     }
     expect(body.orderNumber).toMatch(/^W2P-2026-\d+/);
   });

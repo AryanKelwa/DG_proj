@@ -202,7 +202,7 @@ export function ProofReviewDialog({
                   Formal Customer Sign-Off Verified
                 </span>
                 <span className="text-[11px] opacity-80">
-                  Approved By: {proof.approvedBy} on {new Date(proof.approvedAt).toLocaleString("en-GB")}
+                  Approved By: {proof.approvedBy} on {new Date(proof.approvedAt).toLocaleString("en-IN")}
                 </span>
               </div>
               <Badge variant="success" className="text-[10px]">

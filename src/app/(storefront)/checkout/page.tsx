@@ -263,7 +263,7 @@ function CheckoutContent() {
             Order Checkout & Payment
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Single-transaction per-order checkout for approved job #{draft.id}. Fully VAT-compliant with instant order confirmation.
+            Single-transaction per-order checkout for approved job #{draft.id}. Fully GST-compliant with instant order confirmation.
           </p>
         </div>
 
@@ -540,14 +540,14 @@ function CheckoutContent() {
                 ) : (
                   <>
                     <Lock className="w-4 h-4 mr-2" />
-                    Pay {pricing.formatted.totalGross} & Place Order
+                    Pay {pricing.formatted.total} & Place Order
                   </>
                 )}
               </Button>
 
               <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground font-mono">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Zero Recurring Billing · Transactional Single Payment · VAT Invoice Generated</span>
+                <span>Zero Recurring Billing · Transactional Single Payment · GST Invoice Generated</span>
               </div>
             </CardFooter>
           </Card>
@@ -607,7 +607,7 @@ function CheckoutContent() {
               {/* Price Breakdown */}
               <div className="space-y-2 pt-2">
                 <div className="flex justify-between text-industrial-400">
-                  <span>Unit Rate (excl. VAT):</span>
+                  <span>Unit Rate (excl. GST):</span>
                   <span className="text-white">{pricing.formatted.unitPrice}</span>
                 </div>
                 <div className="flex justify-between text-industrial-400">
@@ -615,12 +615,12 @@ function CheckoutContent() {
                   <span className="text-white font-semibold">{pricing.formatted.subtotal}</span>
                 </div>
                 <div className="flex justify-between text-industrial-400">
-                  <span>UK VAT ({pricing.vatRatePercentage}%):</span>
-                  <span className="text-white font-semibold">{pricing.formatted.vatAmount}</span>
+                  <span>GST ({pricing.gstRatePercentage}%):</span>
+                  <span className="text-white font-semibold">{pricing.formatted.tax}</span>
                 </div>
                 <div className="flex justify-between text-base font-bold text-white pt-3 border-t border-industrial-800">
                   <span>Total Amount Due:</span>
-                  <span className="text-brand-400 text-xl font-heading">{pricing.formatted.totalGross}</span>
+                  <span className="text-brand-400 text-xl font-heading">{pricing.formatted.total}</span>
                 </div>
               </div>
             </CardContent>

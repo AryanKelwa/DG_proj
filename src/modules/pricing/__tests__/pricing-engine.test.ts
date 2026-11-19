@@ -20,7 +20,7 @@ describe("Pricing Engine Unit Tests (§ 05 & Testing Checklist)", () => {
     assert.equal(result.discountPercentage, 0);
     assert.ok(result.discountedUnitPriceCents > 0);
     assert.equal(result.subtotalCents, result.discountedUnitPriceCents * 1);
-    assert.equal(result.totalGrossCents, result.subtotalCents + result.vatAmountCents);
+    assert.equal(result.totalCents, result.subtotalCents + result.taxCents);
   });
 
   it("calculates maximum dimension boundary (350mm x 350mm)", () => {
@@ -152,9 +152,9 @@ describe("Pricing Engine Unit Tests (§ 05 & Testing Checklist)", () => {
       });
 
       const expectedVat = Math.round(result.subtotalCents * 0.2);
-      assert.equal(result.vatAmountCents, expectedVat);
-      assert.equal(result.totalGrossCents, result.subtotalCents + result.vatAmountCents);
-      assert.ok(result.formatted.totalGross.includes("£"));
+      assert.equal(result.taxCents, expectedVat);
+      assert.equal(result.totalCents, result.subtotalCents + result.taxCents);
+      assert.ok(result.formatted.total.includes("£"));
     });
   });
 });
