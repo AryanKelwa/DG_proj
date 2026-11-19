@@ -622,7 +622,7 @@ export function ProductionDashboardView() {
               </p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
+            <div className="glass rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm border-collapse">
                   <thead className="bg-neutral-50 border-b border-neutral-200 text-xs font-semibold uppercase text-neutral-600 tracking-wider">

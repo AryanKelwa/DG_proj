@@ -21,7 +21,7 @@ export function Footer() {
               Commercial-grade web-to-print platform powering six manufacturing divisions under one roof. Instant parameter-driven pricing, browser-based design, and automated 300 DPI production pipelines.
             </p>
             <div className="pt-2">
-              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-industrial-900 border border-industrial-800 text-[11px] font-mono text-brand-400">
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-industrial-900 border border-industrial-800 text-[11px] font-mono text-brand-600">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                 Production Engine Active (300 DPI)
               </span>
@@ -40,7 +40,7 @@ export function Footer() {
                   className="text-industrial-300 hover:text-white transition-colors flex items-center justify-between group"
                 >
                   <span>Manufacturing Catalog</span>
-                  <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-400" />
+                  <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-600" />
                 </Link>
               </li>
               <li>
@@ -49,7 +49,7 @@ export function Footer() {
                   className="text-industrial-300 hover:text-white transition-colors flex items-center justify-between group"
                 >
                   <span>Instant Price Calculator</span>
-                  <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-400" />
+                  <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-600" />
                 </Link>
               </li>
               <li>
@@ -58,7 +58,7 @@ export function Footer() {
                   className="text-industrial-300 hover:text-white transition-colors flex items-center justify-between group"
                 >
                   <span>CSV Variable Merge</span>
-                  <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-400" />
+                  <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-600" />
                 </Link>
               </li>
               <li>
@@ -67,7 +67,7 @@ export function Footer() {
                   className="text-industrial-300 hover:text-white transition-colors flex items-center justify-between group"
                 >
                   <span>Production Gallery</span>
-                  <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-400" />
+                  <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-600" />
                 </Link>
               </li>
             </ul>
@@ -92,7 +92,7 @@ export function Footer() {
                 <span>Audit-Logged Proofing & Approval Gate</span>
               </li>
               <li className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-brand-400 shrink-0" />
+                <Shield className="w-4 h-4 text-brand-600 shrink-0" />
                 <span>Stripe PCI-DSS Per-Order Checkout</span>
               </li>
               <li className="flex items-center gap-2">

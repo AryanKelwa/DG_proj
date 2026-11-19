@@ -69,7 +69,10 @@ export async function loginViaUi(
 export async function logoutViaUi(page: Page) {
   // Signing out revokes the user's sessions, so cached sessions are no longer valid.
   sessionCache.clear();
-  const signOutButton = page.locator('button:has-text("Sign Out")').first();
+  // On small screens Sign Out lives in the menu drawer.
+  const menuToggle = page.getByRole("button", { name: "Toggle menu" });
+  if (await menuToggle.isVisible()) await menuToggle.click();
+  const signOutButton = page.locator('button:has-text("Sign Out"):visible').first();
   if (await signOutButton.isVisible()) {
     await signOutButton.click();
     // Logout may land on /login?redirect=..., so match the path with or without a query string.

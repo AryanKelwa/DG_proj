@@ -76,7 +76,7 @@ function SignupForm() {
     <div className="max-w-md mx-auto px-4 py-16 w-full">
       <Card className="border-border shadow-elevation">
         <CardHeader className="space-y-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-medium w-fit">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-600 text-xs font-medium w-fit">
             <CheckCircle2 className="w-3.5 h-3.5" />
             Customer Registration
           </span>

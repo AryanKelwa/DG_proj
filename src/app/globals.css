@@ -11,36 +11,36 @@
     --font-mono: "JetBrains Mono", monospace;
 
     /* Modern High-Impact Tech Palette: Crisp clean base with royal cobalt & deep midnight */
-    --background: 210 20% 98%;
-    --foreground: 222 47% 11%;
+    --background: 230 40% 98%;
+    --foreground: 232 35% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 232 35% 12%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
     /* Modern Royal Cobalt Blue (#2563EB) */
-    --primary: 221 83% 53%;
+    --primary: 239 76% 56%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 214 32% 95%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 232 60% 96%;
+    --secondary-foreground: 232 35% 18%;
 
-    --muted: 214 32% 95%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 232 40% 96%;
+    --muted-foreground: 230 12% 45%;
 
-    --accent: 221 83% 96%;
-    --accent-foreground: 221 83% 45%;
+    --accent: 234 90% 96%;
+    --accent-foreground: 239 70% 40%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --border: 230 30% 90%;
+    --input: 230 30% 88%;
+    --ring: 239 76% 56%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
   }
 
   .dark {
@@ -124,4 +124,42 @@
 main > * {
   width: 100%;
   min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Glass design system: soft lavender canvas, translucent cards, hover lift.
+ * ------------------------------------------------------------------------- */
+body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(124, 130, 248, 0.14), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(59, 63, 228, 0.08), transparent 55%),
+    hsl(var(--background));
+  background-attachment: fixed;
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/75 backdrop-blur-xl border border-white/70 shadow-glass;
+  }
+  .glass-tint {
+    @apply bg-brand-50/70 backdrop-blur-xl border border-brand-100 shadow-glass;
+  }
+  .hover-lift {
+    @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-glass-hover;
+  }
+}
+
+/* Former dark panels are light now: keep their text readable (buttons keep their own colours). */
+.bg-industrial-950,
+.bg-industrial-900,
+.bg-industrial-850,
+.bg-industrial-800 {
+  color: hsl(var(--foreground));
+}
+:is(.bg-industrial-950, .bg-industrial-900, .bg-industrial-850, .bg-industrial-800) .text-white:not([class*="bg-"]) {
+  color: hsl(var(--foreground));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-lift { transition: none; transform: none !important; }
 }

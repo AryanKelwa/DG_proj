@@ -192,10 +192,10 @@ export function CustomerDashboardView() {
   if (!user || role === "visitor") {
     return (
       <div className="p-8 text-center max-w-lg mx-auto space-y-4 border rounded-2xl bg-card my-16 shadow-elevation">
-        <div className="w-14 h-14 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center mx-auto">
+        <div className="w-14 h-14 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-600 flex items-center justify-center mx-auto">
           <User className="w-7 h-7" />
         </div>
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-medium">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-600 text-xs font-medium">
           Customer Portal Access
         </span>
         <h2 className="text-2xl font-bold font-heading">Sign In to View Customer Portal</h2>
@@ -379,7 +379,7 @@ export function CustomerDashboardView() {
                 };
 
                 return (
-                  <Card key={ord.id} className="p-6 border-border hover:border-muted-foreground/40 transition-colors">
+                  <Card key={ord.id} className="p-6 hover-lift">
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                       <div className="space-y-2">
                         <div className="flex items-center gap-3">
@@ -470,7 +470,7 @@ export function CustomerDashboardView() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {proofs.map((prf) => (
-                <Card key={prf.id} className="overflow-hidden border-border flex flex-col justify-between">
+                <Card key={prf.id} className="overflow-hidden flex flex-col justify-between hover-lift">
                   <div>
                     <div className="aspect-[16/10] bg-industrial-950 relative overflow-hidden group">
                       {/* eslint-disable-next-line @next/next/no-img-element */}

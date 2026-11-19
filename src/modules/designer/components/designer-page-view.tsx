@@ -400,7 +400,7 @@ export function DesignerPageView({
       <div className="p-6 rounded-2xl bg-industrial-950 text-white border border-industrial-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-300 text-xs font-medium">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-600 text-xs font-medium">
               Interactive Studio
             </span>
             <span className="text-xs font-mono text-industrial-400">
@@ -414,7 +414,7 @@ export function DesignerPageView({
             <span>Trim Box: <strong className="text-white">{dimensions.widthMm}mm × {dimensions.heightMm}mm</strong></span>
             <span>Bleed: <strong className="text-red-400">+{dimensions.bleedMm}mm</strong></span>
             <span>Safety Margin: <strong className="text-emerald-400">{dimensions.safetyMarginMm}mm</strong></span>
-            <span>Batch Quantity: <strong className="text-brand-400">{quantity} units</strong></span>
+            <span>Batch Quantity: <strong className="text-brand-600">{quantity} units</strong></span>
           </div>
         </div>
 
@@ -589,7 +589,7 @@ export function DesignerPageView({
           <div className="bg-card border max-w-2xl w-full rounded-2xl shadow-elevation overflow-hidden my-auto max-h-[92vh] flex flex-col">
             <div className="p-4 sm:p-6 border-b flex items-center justify-between shrink-0">
               <div>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-medium">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-600 text-xs font-medium">
                   Digital Proof Inspection
                 </span>
                 <h3 className="text-lg sm:text-xl font-bold font-heading mt-1">

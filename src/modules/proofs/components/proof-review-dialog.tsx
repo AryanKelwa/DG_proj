@@ -58,7 +58,7 @@ export function ProofReviewDialog({
         <div className="p-6 border-b flex items-center justify-between bg-industrial-950 text-white">
           <div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-300 text-xs font-medium">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-600 text-xs font-medium">
                 Digital Proofing
               </span>
               <span className="text-xs font-mono text-industrial-400">

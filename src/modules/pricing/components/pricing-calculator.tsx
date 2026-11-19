@@ -307,7 +307,7 @@ export function PricingCalculator({ products: PRODUCTS }: { products: ExtendedPr
               </div>
               <div className="flex justify-between text-industrial-300">
                 <span>Volume Discount Floor:</span>
-                <span className={pricing.discountPercentage > 0 ? "text-brand-400 font-semibold" : "text-industrial-400"}>
+                <span className={pricing.discountPercentage > 0 ? "text-brand-600 font-semibold" : "text-industrial-400"}>
                   {pricing.discountPercentage > 0 ? `-${pricing.discountPercentage}% Applied` : "None (under 50 units)"}
                 </span>
               </div>
@@ -321,7 +321,7 @@ export function PricingCalculator({ products: PRODUCTS }: { products: ExtendedPr
               </div>
               <div className="flex justify-between text-sm font-bold border-t border-industrial-800 pt-3 text-white">
                 <span>Total Gross:</span>
-                <span className="text-brand-400 text-lg">{pricing.formatted.total}</span>
+                <span className="text-brand-600 text-lg">{pricing.formatted.total}</span>
               </div>
             </div>
 
