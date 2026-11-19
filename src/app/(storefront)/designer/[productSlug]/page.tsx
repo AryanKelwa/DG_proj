@@ -1,7 +1,7 @@
 import React from "react";
 import { notFound } from "next/navigation";
 import { DesignerPageView } from "@/modules/designer/components/designer-page-view";
-import { getDraft, createDraft, getDraftGuestTokenHash } from "@/modules/drafts/draft-store";
+import { getDraft, getDraftGuestTokenHash } from "@/modules/drafts/draft-store";
 import { getPageUser, getPageGuestToken } from "@/lib/server-auth";
 import { hashGuestToken } from "@/lib/draft-access";
 import { validateConfiguration } from "@/modules/pricing/pricing-engine";
@@ -35,15 +35,17 @@ export default async function DesignerPage({
     if (!ownsDraft || draft.productId !== product.id) draft = null;
   }
 
-  if (!draft) {
-    // Values from the URL are only used when they form a producible configuration.
-    const requested = {
-      widthMm: Number(sParams.w) || product.default_width_mm,
-      heightMm: Number(sParams.h) || product.default_height_mm,
-      materialId: sParams.mat || product.allowed_materials[0]?.id || "default",
-      quantity: Number(sParams.qty) || 100,
-    };
-    const config = validateConfiguration(product, requested)
+  // No draft is created just by viewing the designer: the client creates one the
+  // first time the customer generates a proof, uploads artwork or approves.
+  const requested = {
+    widthMm: Number(sParams.w) || product.default_width_mm,
+    heightMm: Number(sParams.h) || product.default_height_mm,
+    materialId: sParams.mat || product.allowed_materials[0]?.id || "default",
+    quantity: Number(sParams.qty) || 100,
+  };
+  const config = draft
+    ? { widthMm: draft.options.widthMm, heightMm: draft.options.heightMm, materialId: draft.options.materialId, quantity: draft.quantity }
+    : validateConfiguration(product, requested)
       ? {
           widthMm: product.default_width_mm,
           heightMm: product.default_height_mm,
@@ -51,29 +53,17 @@ export default async function DesignerPage({
           quantity: 100,
         }
       : requested;
-    const { widthMm: width, heightMm: height, materialId: material, quantity: qty } = config;
-
-    draft = await createDraft({
-      productId: product.id,
-      widthMm: width,
-      heightMm: height,
-      materialId: material,
-      quantity: qty,
-      customerId: user?.id ?? null,
-      customerEmail: user?.email ?? null,
-      guestTokenHash: !user && guestToken ? hashGuestToken(guestToken) : null,
-    });
-  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <DesignerPageView
         product={product}
-        draftId={draft.id}
-        initialWidthMm={draft.options.widthMm}
-        initialHeightMm={draft.options.heightMm}
-        selectedMaterialId={draft.options.materialId}
-        quantity={draft.quantity}
+        draftId={draft?.id}
+        initialDesign={draft?.designJson ?? null}
+        initialWidthMm={config.widthMm}
+        initialHeightMm={config.heightMm}
+        selectedMaterialId={config.materialId}
+        quantity={config.quantity}
       />
     </div>
   );

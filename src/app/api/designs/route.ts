@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/server-auth";
 import { getSavedDesignsForUser, saveDesign } from "@/modules/designs/saved-designs-store";
-import { SavedDesign } from "@/types/database";
+import { z } from "zod";
+import { getProductById } from "@/modules/catalog/catalog-store";
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,33 +22,47 @@ export async function GET(req: NextRequest) {
   }
 }
 
+const SaveDesignSchema = z.object({
+  productId: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  widthMm: z.number().positive(),
+  heightMm: z.number().positive(),
+  material: z.string().min(1),
+  canvasState: z.record(z.unknown()),
+  previewUrl: z.string().url().max(2048).optional(),
+});
+
+/** Saves a design to the signed-in customer's library. */
 export async function POST(req: NextRequest) {
   try {
     const sessionUser = await getAuthUser(req);
     if (!sessionUser) {
-      return NextResponse.json(
-        { error: "Unauthorized: Valid session required to save a design" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized: Valid session required to save a design" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const newDesign: SavedDesign = {
-      id: body.id || `des-${Date.now()}`,
-      customer_id: sessionUser.id,
-      product_id: body.productId || "custom-die-cut-vinyl",
-      product_name: body.productName || "Custom Die-Cut Vinyl Stickers",
-      name: body.name || "Untitled Design",
-      width_mm: body.widthMm || 75,
-      height_mm: body.heightMm || 75,
-      material: body.material || "gloss-white",
-      canvas_state: body.canvasState || {},
-      preview_url: body.previewUrl || "",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+    const parsed = SaveDesignSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid design", details: parsed.error.format() }, { status: 400 });
+    }
+    if (JSON.stringify(parsed.data.canvasState).length > 1_000_000) {
+      return NextResponse.json({ error: "The design is too large to save." }, { status: 413 });
+    }
 
-    const saved = await saveDesign(newDesign);
+    const product = await getProductById(parsed.data.productId);
+    if (!product) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    const saved = await saveDesign({
+      customer_id: sessionUser.id,
+      product_id: product.id,
+      name: parsed.data.name,
+      width_mm: parsed.data.widthMm,
+      height_mm: parsed.data.heightMm,
+      material: parsed.data.material,
+      canvas_state: parsed.data.canvasState,
+      preview_url: parsed.data.previewUrl,
+    });
     return NextResponse.json({ design: saved }, { status: 201 });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to save design";

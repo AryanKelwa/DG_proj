@@ -1,3 +1,4 @@
+import { fitText, approximateMeasure, MeasureFn } from "@/modules/print-engine/text-fit";
 import { PrintDimensions, PrintBoundsInPixels } from "../types";
 
 /**
@@ -58,20 +59,12 @@ export function computeFittedFontSize(
   targetWidth: number,
   baseFontSize: number = 24,
   minFontSize: number = 10,
-  maxFontSize: number = 72
+  maxFontSize: number = 72,
+  measure: MeasureFn = approximateMeasure
 ): number {
-  if (!text || targetWidth <= 0) return baseFontSize;
-
-  // Approximate character width ratio for sans-serif (0.58 width-to-height)
-  const charWidthRatio = 0.58;
-  const estimatedWidth = text.length * baseFontSize * charWidthRatio;
-
-  if (estimatedWidth > targetWidth) {
-    const fitted = Math.floor(targetWidth / (text.length * charWidthRatio));
-    return Math.max(minFontSize, Math.min(maxFontSize, fitted));
-  }
-
-  return Math.min(maxFontSize, baseFontSize);
+  if (!text || targetWidth <= 0) return Math.min(maxFontSize, Math.max(minFontSize, baseFontSize));
+  // Never grow past the requested size; shrink (down to minFontSize) only when needed.
+  return fitText(text, { maxWidth: targetWidth, minFontSize, maxFontSize: Math.min(baseFontSize, maxFontSize) }, measure).fontSize;
 }
 
 /**

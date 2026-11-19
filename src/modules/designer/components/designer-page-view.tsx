@@ -39,6 +39,8 @@ const CanvasStageDynamic = dynamic(
 interface DesignerPageViewProps {
   product: Product;
   draftId?: string;
+  /** Saved design state of an existing draft (reopened job or reorder). */
+  initialDesign?: Record<string, unknown> | null;
   initialWidthMm: number;
   initialHeightMm: number;
   selectedMaterialId: string;
@@ -48,6 +50,7 @@ interface DesignerPageViewProps {
 export function DesignerPageView({
   product,
   draftId,
+  initialDesign,
   initialWidthMm,
   initialHeightMm,
   selectedMaterialId,
@@ -58,7 +61,12 @@ export function DesignerPageView({
   const [effectiveDraftId, setEffectiveDraftId] = useState<string>(draftId || "");
   const [currentProofVersion, setCurrentProofVersion] = useState<number>(1);
   const [isApproving, setIsApproving] = useState<boolean>(false);
-  const [mode, setMode] = useState<"designer" | "upload">("designer");
+  const savedCanvas = initialDesign && Array.isArray((initialDesign as { elements?: unknown }).elements)
+    ? (initialDesign as unknown as SerializedCanvasState)
+    : null;
+  const [mode, setMode] = useState<"designer" | "upload">(
+    initialDesign && (initialDesign as { source?: string }).source === "upload" ? "upload" : "designer"
+  );
   const stageRef = useRef<Konva.Stage | null>(null);
 
   const [dimensions] = useState<PrintDimensions>({
@@ -68,7 +76,7 @@ export function DesignerPageView({
     safetyMarginMm: product.default_safety_margin_mm,
   });
 
-  const [backgroundColor, setBackgroundColor] = useState<string>("#FFFFFF");
+  const [backgroundColor, setBackgroundColor] = useState<string>(savedCanvas?.backgroundColor ?? "#FFFFFF");
   const [showBleedGuide, setShowBleedGuide] = useState<boolean>(true);
   const [showTrimGuide, setShowTrimGuide] = useState<boolean>(true);
   const [showSafeGuide, setShowSafeGuide] = useState<boolean>(true);
@@ -76,7 +84,7 @@ export function DesignerPageView({
   const [showGuides, setShowGuides] = useState<boolean>(true);
 
   // Initial Sample Elements
-  const [elements, setElements] = useState<CanvasElement[]>([
+  const [elements, setElements] = useState<CanvasElement[]>(savedCanvas?.elements ?? [
     {
       id: "el-brand-title",
       type: "text",
@@ -224,13 +232,49 @@ export function DesignerPageView({
     };
   };
 
-  const handleSaveDesign = () => {
-    const state = serializeCanvasState();
-    const jsonStr = JSON.stringify(state, null, 2);
-    // Store in localStorage for fast repeat reorders
-    localStorage.setItem(`dh_saved_design_${product.slug}`, jsonStr);
-    setSavedJsonNotice("Design state serialized & saved to your account library!");
+  // Saves the design to the customer's account (PRD § 09 saved designs).
+  const handleSaveDesign = async () => {
+    if (!user) {
+      setSavedJsonNotice("Sign in to save designs to your account.");
+      setTimeout(() => setSavedJsonNotice(null), 4000);
+      return;
+    }
+    const res = await fetch("/api/designs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productId: product.id,
+        name: `${product.name} · ${new Date().toLocaleDateString("en-IN")}`,
+        widthMm: dimensions.widthMm,
+        heightMm: dimensions.heightMm,
+        material: selectedMaterialId,
+        canvasState: serializeCanvasState(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSavedJsonNotice(res.ok ? "Design saved to your account." : data.error || "Could not save the design.");
     setTimeout(() => setSavedJsonNotice(null), 4000);
+  };
+
+  // Creates the job draft the first time it is needed (no draft is created just by viewing).
+  const ensureDraftId = async (): Promise<string> => {
+    if (effectiveDraftId) return effectiveDraftId;
+    const res = await fetch("/api/drafts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productId: product.id,
+        widthMm: dimensions.widthMm,
+        heightMm: dimensions.heightMm,
+        materialId: selectedMaterialId,
+        quantity,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not start the job.");
+    setEffectiveDraftId(data.draft.id);
+    window.history.replaceState(null, "", `?draft=${data.draft.id}`);
+    return data.draft.id as string;
   };
 
   // Real-Time Proof Preview Generation (§ 06 & § 08)
@@ -262,19 +306,18 @@ export function DesignerPageView({
     setProofDataUrl(uri);
     setProofModalOpen(true);
 
-    if (effectiveDraftId) {
+    {
       try {
-        await fetch(`/api/drafts/${effectiveDraftId}`, {
+        const draftIdForProof = await ensureDraftId();
+        await fetch(`/api/drafts/${draftIdForProof}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             updates: {
               status: "proof_pending",
-              designJson: serializeCanvasState(),
+              ...(mode === "designer" ? { designJson: serializeCanvasState() } : {}),
             },
             action: "PROOF_GENERATED",
-            actorId: user?.id || "customer-session",
-            actorEmail: user?.email || "customer@w2p.co.uk",
           }),
         });
       } catch (e) {
@@ -286,25 +329,7 @@ export function DesignerPageView({
   const handleApproveProof = async () => {
     setIsApproving(true);
     try {
-      let targetDraftId = effectiveDraftId;
-      if (!targetDraftId) {
-        const createRes = await fetch("/api/drafts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            productId: product.id,
-            widthMm: dimensions.widthMm,
-            heightMm: dimensions.heightMm,
-            materialId: selectedMaterialId,
-            quantity,
-            customerId: user?.id || null,
-            customerEmail: user?.email || null,
-          }),
-        });
-        const createData = await createRes.json();
-        targetDraftId = createData.draft.id;
-        setEffectiveDraftId(targetDraftId);
-      }
+      const targetDraftId = await ensureDraftId();
 
       // Step 1: Ensure artwork is saved
       await fetch(`/api/drafts/${targetDraftId}`, {
@@ -313,11 +338,9 @@ export function DesignerPageView({
         body: JSON.stringify({
           updates: {
             status: "proof_pending",
-            designJson: serializeCanvasState(),
+            ...(mode === "designer" ? { designJson: serializeCanvasState() } : {}),
           },
           action: "PROOF_PENDING_BEFORE_APPROVAL",
-          actorId: user?.id || "customer-session",
-          actorEmail: user?.email || "customer@w2p.co.uk",
         }),
       });
 
@@ -325,10 +348,7 @@ export function DesignerPageView({
       const approveRes = await fetch(`/api/drafts/${targetDraftId}/approve-proof`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actorId: user?.id || "usr-cust-1",
-          actorEmail: user?.email || "customer@w2p.co.uk",
-        }),
+        body: JSON.stringify({}),
       });
 
       if (!approveRes.ok) {
@@ -355,8 +375,6 @@ export function DesignerPageView({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             feedback: "Customer requested artwork adjustments in designer.",
-            actorId: user?.id || "usr-cust-1",
-            actorEmail: user?.email || "customer@w2p.co.uk",
           }),
         });
         const data = await res.json();
@@ -541,9 +559,8 @@ export function DesignerPageView({
             product={product}
             widthMm={dimensions.widthMm}
             heightMm={dimensions.heightMm}
-            // TODO(Phase 4, bug B19): the uploaded file (url, name) is discarded and never attached to the draft.
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            onUploadSuccess={(url, name) => {
+            ensureDraftId={ensureDraftId}
+            onUploadSuccess={() => {
               handleOpenProofModal();
             }}
           />

@@ -336,13 +336,24 @@ export async function generateDraftProof(
 export async function approveDraftProof(draftId: string, actor: Actor): Promise<JobDraft> {
   const draft = await getDraft(draftId);
   if (!draft) throw new Error(`Draft ${draftId} not found`);
+  if (draft.status !== "proof_pending") {
+    throw new Error(
+      draft.status === "proof_approved"
+        ? `Proof v${draft.proofVersion} is already approved.`
+        : `A proof can only be approved while it is awaiting review (current status: ${draft.status}).`
+    );
+  }
 
   const activeProof =
     draft.proofs.find((p) => p.version === draft.proofVersion) ?? (await generateDraftProof(draft, draft.proofVersion));
   const now = new Date().toISOString();
 
   await saveProofRecord(draftId, { ...activeProof, approvedBy: actor.email, approvedAt: now });
-  unwrap(await db().from("drafts").update({ status: "proof_approved" }).eq("id", draftId), "Approve proof");
+  const approved = unwrap(
+    await db().from("drafts").update({ status: "proof_approved" }).eq("id", draftId).eq("status", "proof_pending").select("id"),
+    "Approve proof"
+  ) as Array<{ id: string }>;
+  if (approved.length === 0) throw new Error(`Draft ${draftId} changed concurrently; please retry.`);
   await logEvent(draftId, actor, "PROOF_APPROVED", draft.status, "proof_approved", {
     version: draft.proofVersion,
     sha256Hash: activeProof.sha256Hash,
@@ -355,6 +366,9 @@ export async function approveDraftProof(draftId: string, actor: Actor): Promise<
 export async function requestDraftProofChanges(draftId: string, feedback: string, actor: Actor): Promise<JobDraft> {
   const draft = await getDraft(draftId);
   if (!draft) throw new Error(`Draft ${draftId} not found`);
+  if (draft.status !== "proof_pending" && draft.status !== "proof_approved") {
+    throw new Error(`Changes can only be requested on a proof under review or approved but unpaid (current status: ${draft.status}).`);
+  }
 
   const current = draft.proofs.find((p) => p.version === draft.proofVersion) ?? {
     version: draft.proofVersion,
