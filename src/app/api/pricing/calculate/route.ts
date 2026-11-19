@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { calculatePrintPrice } from "@/modules/pricing/pricing-engine";
-import { PRODUCTS } from "@/lib/data/mock-data";
+import { getProductById } from "@/modules/catalog/catalog-store";
 import { z } from "zod";
 
 const PricingRequestSchema = z.object({
@@ -24,9 +24,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { productId, widthMm, heightMm, materialId, quantity } = validated.data;
-    const product = PRODUCTS.find((p) => p.id === productId);
+    const product = await getProductById(productId);
 
-    if (!product) {
+    if (!product || !product.is_active) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 

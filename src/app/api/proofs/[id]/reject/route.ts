@@ -3,14 +3,13 @@ import { checkApprovalGate } from "@/modules/proofs/proof-generator";
 import { safeSendNotificationEmail } from "@/modules/email/email-service";
 import { getAuthUser } from "@/lib/server-auth";
 import { getOrderById, updateOrderStageWithVersion } from "@/modules/orders/order-store";
-import { updateProof } from "@/modules/proofs/proofs-store";
+import { getProofById, updateProof } from "@/modules/proofs/proofs-store";
 import { z } from "zod";
 
 const RejectProofSchema = z.object({
   feedback: z.string().min(3),
   orderId: z.string(),
   currentVersion: z.number().int().positive(),
-  customerEmail: z.string().email().optional(),
 });
 
 export async function POST(
@@ -30,28 +29,31 @@ export async function POST(
     }
 
     const sessionUser = await getAuthUser(req);
-    const { feedback, orderId, currentVersion, customerEmail } = validated.data;
+    if (!sessionUser) {
+      return NextResponse.json({ error: "Unauthorized: Valid session required" }, { status: 401 });
+    }
+    const { feedback, orderId, currentVersion } = validated.data;
     const order = await getOrderById(orderId);
 
     if (!order) {
       return NextResponse.json({ error: `Order ${orderId} not found` }, { status: 404 });
     }
 
-    // Authorization check: User must own the order or be an admin
-    if (sessionUser && sessionUser.role !== "admin") {
-      const isOwner =
-        order.customer_id === sessionUser.id;
-      if (!isOwner) {
+    // The proof must exist, belong to this order, and be owned by the caller (or the caller is an admin).
+    const proof = await getProofById(id);
+    if (!proof || proof.order_id !== order.order_number) {
+      return NextResponse.json({ error: "Proof not found for this order" }, { status: 404 });
+    }
+    if (sessionUser.role !== "admin" && proof.customer_id !== sessionUser.id) {
         return NextResponse.json(
           { error: "Forbidden: You do not own this order's proof" },
           { status: 403 }
         );
-      }
     }
 
     const nextVersion = currentVersion + 1;
-    const effectiveEmail = sessionUser?.email || customerEmail || order.customer_email || "customer@example.com";
-    const effectiveName = sessionUser?.full_name || order.customer_name || "Valued Customer";
+    const effectiveEmail = sessionUser.email;
+    const effectiveName = sessionUser.full_name || order.customer_name || "Valued Customer";
 
     const gateResult = checkApprovalGate("changes_requested");
 

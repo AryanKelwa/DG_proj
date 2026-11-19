@@ -1,5 +1,6 @@
 import { execSync } from "child_process";
 import { test, expect } from "@playwright/test";
+import { getSavedDesignsForUser } from "../src/modules/designs/saved-designs-store";
 import { TEST_USERS, loginViaUi, logoutViaUi } from "./support/auth-helpers";
 import fs from "fs";
 import path from "path";
@@ -197,7 +198,7 @@ test.describe("PHASE I: Customer Data Leak & Identity Hardening (PRD § 03, § 1
       const full = path.join(cwd, rel);
       const isTestOrSeed =
         full.includes("__tests__") ||
-        full.includes("seed-data.ts") ||
+        full.includes("modules/seed/") ||
         full.includes("e2e") ||
         full.endsWith(".test.ts") ||
         full.endsWith(".spec.ts") ||
@@ -218,12 +219,11 @@ test.describe("PHASE I: Customer Data Leak & Identity Hardening (PRD § 03, § 1
 
   test("6. Mutation Check: Disabling customer_id filter leaks data and fails assertion", async () => {
     // Normal query with filter returns 0
-    const { getSavedDesignsForUser } = await import("@/modules/designs/saved-designs-store");
-    const isolated = await getSavedDesignsForUser("usr-fresh-test", "customer");
+    const isolated = await getSavedDesignsForUser("00000000-0000-0000-0000-000000000000", "customer");
     expect(isolated.length).toBe(0);
 
     // Mutated query without customer filter leaks seeded design
-    const leaked = await getSavedDesignsForUser("usr-fresh-test", "admin");
+    const leaked = await getSavedDesignsForUser("00000000-0000-0000-0000-000000000000", "admin");
     expect(leaked.length).toBeGreaterThan(0);
   });
 });

@@ -45,7 +45,10 @@ export async function getAllUsers(): Promise<StoredUser[]> {
   return (rows as ProfileRow[]).map(toUser);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getUserById(id: string): Promise<StoredUser | null> {
+  if (!UUID_RE.test(id)) return null;
   const row = unwrap(
     await db().from("profiles").select(PROFILE_COLUMNS).eq("id", id).maybeSingle(),
     "Load user"

@@ -84,3 +84,27 @@ export function toSafeUser(user: StoredUser) {
     created_at: user.created_at,
   };
 }
+
+/**
+ * Signed-in user for server components (pages), read from the request cookies.
+ * Session refresh happens in middleware; this only reads.
+ */
+export async function getPageUser(): Promise<StoredUser | null> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => undefined } }
+  );
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  const user = await getUserById(data.user.id);
+  return user?.isActive ? user : null;
+}
+
+/** The visitor's guest token for server components (set by middleware). */
+export async function getPageGuestToken(): Promise<string | null> {
+  const { cookies } = await import("next/headers");
+  return (await cookies()).get("w2p_guest")?.value ?? null;
+}

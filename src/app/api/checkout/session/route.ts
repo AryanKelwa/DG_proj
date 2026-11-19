@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getDraft, calculateDraftPrice, transitionDraftStatus } from "@/modules/drafts/draft-store";
+import { getDraft, calculateDraftPrice, transitionDraftStatus, attachDraftToUser } from "@/modules/drafts/draft-store";
+import { authorizeDraft } from "@/lib/draft-access";
 import { generateXeroInvoicePayload } from "@/modules/orders/xero-generator";
 import { getProductById } from "@/modules/catalog/catalog-store";
 import { getAuthUser } from "@/lib/server-auth";
@@ -13,7 +14,7 @@ const internationalPostcodeRegex = /^[A-Z0-9\s-]{3,10}$/i;
 
 const CheckoutSessionSchema = z.object({
   draftId: z.string().min(1, "Draft ID is required for checkout"),
-  customerEmail: z.string().email(),
+  customerEmail: z.string().email().optional(), // ignored: the order contact is the signed-in account
   customerName: z.string().min(1, "Customer name is required"),
   paymentMethod: z.enum(["stripe_hosted", "card"]).default("card"),
   cardNumber: z.string().optional(),
@@ -44,7 +45,6 @@ export async function POST(req: NextRequest) {
 
     const {
       draftId,
-      customerEmail,
       customerName,
       paymentMethod,
       cardNumber,
@@ -85,8 +85,13 @@ export async function POST(req: NextRequest) {
     if (!draft) {
       return NextResponse.json({ error: "Job draft not found" }, { status: 404 });
     }
-    if (draft.customerId && draft.customerId !== sessionUser.id) {
+    // The caller must own the job (or hold the guest cookie it was created with).
+    const access = await authorizeDraft(req, draft);
+    if (!access.ok || (draft.customerId && draft.customerId !== sessionUser.id)) {
       return NextResponse.json({ error: "Forbidden: this job belongs to another account." }, { status: 403 });
+    }
+    if (!draft.customerId) {
+      await attachDraftToUser(draft.id, sessionUser.id, sessionUser.email);
     }
     const actor = { id: sessionUser.id, email: sessionUser.email };
 
@@ -141,7 +146,7 @@ export async function POST(req: NextRequest) {
       id: "",
       order_number: newOrderNumber,
       customer_id: sessionUser.id,
-      customer_email: customerEmail,
+      customer_email: sessionUser.email,
       customer_name: customerName,
       pipeline_stage: "ORDER",
       payment_status: "pending",
@@ -235,7 +240,7 @@ export async function POST(req: NextRequest) {
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
-        customer_email: customerEmail,
+        customer_email: sessionUser.email,
         client_reference_id: draft.id,
         line_items: [
           {

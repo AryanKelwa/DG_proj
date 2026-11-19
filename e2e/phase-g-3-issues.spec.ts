@@ -1,5 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { getOrderById } from "../src/modules/orders/order-store";
+import { getUserByEmail } from "../src/modules/auth/users-store";
+import { TEST_USERS, apiToken, createDraftInBrowser } from "./support/auth-helpers";
+
+/** Sarah's real account id and an API token for her session. */
+async function sarah(request: import("@playwright/test").APIRequestContext) {
+  const user = (await getUserByEmail(TEST_USERS.customerA.email))!;
+  const token = await apiToken(request, TEST_USERS.customerA);
+  return { id: user.id, headers: { Authorization: `Bearer ${token}` } };
+}
 import { createDraft, getDraft } from "../src/modules/drafts/draft-store";
 import { generateProductionPdf } from "../src/modules/print-engine/pdf-generator";
 
@@ -27,6 +36,8 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
       country: "United Kingdom",
     };
 
+    const customerA = await sarah(request);
+
     // 1. Create a draft in proof_approved status
     const draft1 = await createDraft({
       productId: "custom-die-cut-vinyl",
@@ -34,13 +45,14 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
       heightMm: 75,
       materialId: "gloss-white",
       quantity: 100,
-      customerId: "usr-cust-1",
+      customerId: customerA.id,
       customerEmail: address1.email,
     });
 
     await request.post(`/api/drafts/${draft1.id}/approve-proof`, {
+        headers: customerA.headers,
       data: {
-        actorId: "usr-cust-1",
+        actorId: customerA.id,
         actorEmail: address1.email,
       },
     });
@@ -132,19 +144,22 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
       country: "United Kingdom",
     };
 
+    const customerA = await sarah(request);
+
     const draft2 = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 100,
       heightMm: 50,
       materialId: "matte-white",
       quantity: 250,
-      customerId: "usr-cust-1",
+      customerId: customerA.id,
       customerEmail: address2.email,
     });
 
     await request.post(`/api/drafts/${draft2.id}/approve-proof`, {
+        headers: customerA.headers,
       data: {
-        actorId: "usr-cust-1",
+        actorId: customerA.id,
         actorEmail: address2.email,
       },
     });
@@ -197,7 +212,7 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     page,
     request,
   }) => {
-    const draft = await createDraft({
+    const draft = await createDraftInBrowser(page, {
       productId: "custom-die-cut-vinyl",
       widthMm: 75,
       heightMm: 75,
@@ -232,12 +247,17 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     await expect(proofModal).toBeVisible({ timeout: 15000 });
 
     // 5. Inspect stored proof file from server
-    const draftRes = await request.get(`/api/drafts/${draft.id}`);
-    const draftData = await draftRes.json();
-    const storedProof = draftData.draft.proofs[0];
-    expect(storedProof).toBeTruthy();
+    // The proof is stored by an async request fired when the modal opens: poll until it lands.
+    let storedProof: { renderedUrl: string } | undefined;
+    await expect
+      .poll(async () => {
+        const draftData = await (await page.request.get(`/api/drafts/${draft.id}`)).json();
+        storedProof = draftData.draft.proofs[0];
+        return Boolean(storedProof);
+      }, { timeout: 15000 })
+      .toBe(true);
 
-    const proofSvg = decodeURIComponent(storedProof.renderedUrl);
+    const proofSvg = decodeURIComponent(storedProof!.renderedUrl);
 
     // PRD §06 & §08: Assert zero guide lines in proof preview
     // Red bleed guide (#EF4444) MUST NOT BE in proof SVG
@@ -270,7 +290,8 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     request,
   }) => {
     const customerAEmail = "sarah@enduroclub.uk";
-    const customerAId = "usr-cust-1";
+    const customerA = await sarah(request);
+    const customerAId = customerA.id;
 
     // 1. Create and pay for an order as Customer A
     const draftA = await createDraft({
@@ -284,10 +305,12 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     });
 
     await request.post(`/api/drafts/${draftA.id}/approve-proof`, {
+      headers: customerA.headers,
       data: { actorId: customerAId, actorEmail: customerAEmail },
     });
 
     const checkoutRes = await request.post("/api/checkout/session", {
+      headers: customerA.headers,
       data: {
         draftId: draftA.id,
         customerName: "Sarah Jenkins",
@@ -336,9 +359,10 @@ test.describe("PHASE G: 3 Issues Verification (PRD §05, §06, §08, §09, §10)
     await expect(orderCardAfterRelogin).toBeVisible({ timeout: 15000 });
 
     // 5. Tenant Isolation: Customer B cannot see Customer A's order
-    const customerBOrdersRes = await request.get(
-      "/api/orders?userId=usr-cust-2&userEmail=liam@peakdistrictevents.co.uk&role=customer"
-    );
+    const customerBToken = await apiToken(request, TEST_USERS.customerB);
+    const customerBOrdersRes = await request.get("/api/orders?role=admin", {
+      headers: { Authorization: `Bearer ${customerBToken}` },
+    });
     const customerBData = await customerBOrdersRes.json();
     const customerBOrderNumbers = (customerBData.orders || []).map((o: any) => o.order_number);
     expect(customerBOrderNumbers).not.toContain(orderNumberA);

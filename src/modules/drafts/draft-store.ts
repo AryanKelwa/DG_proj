@@ -152,6 +152,8 @@ export interface CreateDraftInput {
   orientation?: "portrait" | "landscape" | "square";
   customerId?: string | null;
   customerEmail?: string | null;
+  /** SHA-256 of the creating visitor's guest cookie; used when there is no customer. */
+  guestTokenHash?: string | null;
 }
 
 export async function createDraft(input: CreateDraftInput): Promise<JobDraft> {
@@ -167,6 +169,7 @@ export async function createDraft(input: CreateDraftInput): Promise<JobDraft> {
         product_id: product.id,
         customer_id: input.customerId || null,
         customer_email: input.customerEmail || null,
+        guest_token_hash: input.customerId ? null : input.guestTokenHash || null,
         status: "configured",
         quantity: input.quantity,
         options: {
@@ -375,12 +378,28 @@ export async function requestDraftProofChanges(draftId: string, feedback: string
   return (await getDraft(draftId))!;
 }
 
+/** Server-only: the stored guest-token hash of a draft (never exposed in API responses). */
+export async function getDraftGuestTokenHash(draftId: string): Promise<string | null> {
+  if (!UUID_RE.test(draftId)) return null;
+  const row = unwrap(
+    await db().from("drafts").select("guest_token_hash").eq("id", draftId).maybeSingle(),
+    "Load draft owner"
+  ) as { guest_token_hash: string | null } | null;
+  return row?.guest_token_hash ?? null;
+}
+
 export async function attachDraftToUser(draftId: string, userId: string, userEmail: string): Promise<JobDraft> {
   const draft = await getDraft(draftId);
   if (!draft) throw new Error(`Draft ${draftId} not found`);
+  if (draft.customerId && draft.customerId !== userId) {
+    throw new Error("This job already belongs to another account.");
+  }
 
   unwrap(
-    await db().from("drafts").update({ customer_id: userId, customer_email: userEmail }).eq("id", draftId),
+    await db()
+      .from("drafts")
+      .update({ customer_id: userId, customer_email: userEmail, guest_token_hash: null })
+      .eq("id", draftId),
     "Attach draft"
   );
   await logEvent(draftId, { id: userId, email: userEmail }, "DRAFT_ATTACHED_TO_USER", draft.status, draft.status, {
