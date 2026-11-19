@@ -1,3 +1,4 @@
+import { createDraftInBrowser } from "./support/auth-helpers";
 import { test, expect } from "@playwright/test";
 import {
   createDraft,
@@ -138,7 +139,7 @@ test.describe("Phase F: Workflow Repair & Approval Gate Enforcement (PRD ยง01, ย
     page,
   }) => {
     test.setTimeout(90000);
-    const draft = await createDraft({
+    const draft = await createDraftInBrowser(page, {
       productId: "custom-die-cut-vinyl",
       widthMm: 100,
       heightMm: 100,

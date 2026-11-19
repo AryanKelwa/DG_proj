@@ -1,3 +1,4 @@
+import { formatINR } from "@/modules/pricing/gst";
 import Link from "next/link";
 import { getAllDivisions, getAllProducts } from "@/modules/catalog/catalog-store";
 import { Button } from "@/components/ui/button";
@@ -147,7 +148,7 @@ export default async function HomePage() {
                 Stop waiting for quotation emails. Configure dimensions and get live prices.
               </h2>
               <p className="text-industrial-300 text-sm leading-relaxed max-w-xl">
-                Every product calculates dynamically based on millimetric area, material multipliers, and automatic volume discount thresholds starting from 50+ units. Full VAT transparency included.
+                Every product calculates dynamically based on millimetric area, material multipliers, and automatic volume discount thresholds starting from 50+ units. Full GST transparency included.
               </p>
 
               <div className="flex flex-wrap gap-3 pt-2">
@@ -174,11 +175,11 @@ export default async function HomePage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-industrial-400">Base Unit Rate:</span>
-                <span className="text-white">£0.18</span>
+                <span className="text-white">₹4.00</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-industrial-400">Area (75mm x 75mm):</span>
-                <span className="text-white">56.3 cm² (+£0.22)</span>
+                <span className="text-white">56.3 cm² (+₹14.06)</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-industrial-400">Material (Gloss Vinyl):</span>
@@ -189,8 +190,8 @@ export default async function HomePage() {
                 <span className="text-brand-400">-30% Automated Discount</span>
               </div>
               <div className="pt-2 border-t border-industrial-800 flex justify-between font-bold text-sm">
-                <span className="text-white">Total (excl. VAT):</span>
-                <span className="text-brand-400">£70.00</span>
+                <span className="text-white">Total (excl. GST):</span>
+                <span className="text-brand-400">₹1,445.00</span>
               </div>
             </div>
           </div>
@@ -243,7 +244,7 @@ export default async function HomePage() {
 
                 <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
                   <span className="font-mono text-xs font-semibold text-foreground">
-                    From £{(prod.base_price_cents / 100).toFixed(2)} / unit
+                    From {formatINR(prod.base_price_cents)} / unit
                   </span>
                   <Link
                     href={`/calculator?product=${prod.slug}`}

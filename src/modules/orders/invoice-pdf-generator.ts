@@ -1,191 +1,125 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFFont, PDFPage, rgb, StandardFonts } from "pdf-lib";
 import { Order } from "@/types/database";
+import { sellerStateCode, stateName } from "@/modules/pricing/gst";
+
+/**
+ * GST tax invoice (PDF, A4). Lists HSN, quantity, rate, taxable value, and the
+ * CGST/SGST or IGST split for the place of supply.
+ *
+ * Standard PDF fonts only cover WinAnsi, so amounts are written as "INR 1,234.56"
+ * and any other non-WinAnsi characters in customer text are replaced.
+ */
+
+const SELLER = {
+  name: process.env.SELLER_LEGAL_NAME || "W2P Print House",
+  address: process.env.SELLER_ADDRESS || "New Delhi, Delhi, India",
+  gstin: process.env.SELLER_GSTIN || "",
+};
+
+function inr(paise: number): string {
+  return `INR ${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Keeps text printable with the standard WinAnsi fonts. */
+function safe(text: string | null | undefined): string {
+  return (text ?? "").replace(/₹/g, "INR ").replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
+}
 
 export async function generateInvoicePdf(order: Order): Promise<Uint8Array> {
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4 Portrait (in points)
-  const fontHelvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontHelveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([595.28, 841.89]);
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const black = rgb(0.07, 0.08, 0.1);
-  const orange = rgb(1.0, 0.35, 0.12);
   const muted = rgb(0.4, 0.45, 0.5);
-  const grayLine = rgb(0.85, 0.88, 0.92);
+  const line = rgb(0.85, 0.88, 0.92);
 
-  // 1. Company Brand Header
-  page.drawText("W2P", {
-    x: 50,
-    y: 770,
-    size: 20,
-    font: fontHelveticaBold,
-    color: orange,
-  });
+  const text = (p: PDFPage, value: string, x: number, y: number, size = 9, font: PDFFont = regular, color = black) =>
+    p.drawText(safe(value), { x, y, size, font, color });
+  const right = (value: string, xRight: number, y: number, size = 9, font: PDFFont = regular) =>
+    text(page, value, xRight - font.widthOfTextAtSize(safe(value), size), y, size, font);
 
-  page.drawText("Commercial Web-to-Print Platform", {
-    x: 50,
-    y: 752,
-    size: 10,
-    font: fontHelvetica,
-    color: muted,
-  });
+  // Seller
+  text(page, SELLER.name, 50, 780, 16, bold);
+  text(page, SELLER.address, 50, 764, 9, regular, muted);
+  text(page, SELLER.gstin ? `GSTIN: ${SELLER.gstin}` : "GSTIN: (not registered)", 50, 751, 9, regular, muted);
+  text(page, `State: ${stateName(sellerStateCode())} (${sellerStateCode()})`, 50, 738, 9, regular, muted);
 
-  page.drawText("VAT REG: GB 987 6543 21 | w2p.co.in", {
-    x: 50,
-    y: 738,
-    size: 8,
-    font: fontHelvetica,
-    color: muted,
-  });
+  // Invoice meta
+  text(page, "TAX INVOICE", 400, 780, 16, bold);
+  text(page, `Invoice no: INV-${order.order_number}`, 400, 764);
+  text(page, `Date: ${new Date(order.created_at).toLocaleDateString("en-IN")}`, 400, 751);
+  text(page, `Payment: ${order.payment_status === "paid" ? "Paid" : "Not paid"}`, 400, 738);
 
-  // Invoice Title & Metadata (Right side)
-  page.drawText("TAX INVOICE", {
-    x: 420,
-    y: 770,
-    size: 18,
-    font: fontHelveticaBold,
-    color: black,
-  });
+  page.drawLine({ start: { x: 50, y: 722 }, end: { x: 545, y: 722 }, thickness: 1, color: line });
 
-  page.drawText(`Invoice #: INV-${order.order_number}`, {
-    x: 420,
-    y: 750,
-    size: 9,
-    font: fontHelveticaBold,
-    color: black,
-  });
+  // Buyer
+  const addr = order.shipping_address;
+  const pos = order.place_of_supply || addr.state_code || sellerStateCode();
+  text(page, "BILL / SHIP TO", 50, 702, 8, bold, muted);
+  text(page, order.customer_name || addr.name, 50, 688, 11, bold);
+  text(page, [addr.line1, addr.line2].filter(Boolean).join(", "), 50, 674);
+  text(page, `${addr.city}${addr.state ? `, ${addr.state}` : ""} ${addr.postal_code}, ${addr.country}`, 50, 662);
+  text(page, order.customer_email || "", 50, 650, 9, regular, muted);
+  if (order.customer_gstin) text(page, `Customer GSTIN: ${order.customer_gstin}`, 50, 638);
+  text(page, `Place of supply: ${stateName(pos) || pos} (${pos})`, 320, 688);
 
-  page.drawText(`Date: ${new Date(order.created_at).toLocaleDateString("en-GB")}`, {
-    x: 420,
-    y: 736,
-    size: 9,
-    font: fontHelvetica,
-    color: muted,
-  });
+  // Line items
+  const igst = order.igst_cents ?? 0;
+  const isInterState = igst > 0;
+  let y = 600;
+  page.drawRectangle({ x: 50, y: y - 6, width: 495, height: 20, color: rgb(0.95, 0.96, 0.97) });
+  text(page, "Description", 56, y, 8, bold);
+  text(page, "HSN", 290, y, 8, bold);
+  right("Qty", 360, y, 8, bold);
+  right("Rate", 430, y, 8, bold);
+  right("Taxable value", 540, y, 8, bold);
+  y -= 24;
 
-  page.drawText(`Status: PAID IN FULL (Stripe)`, {
-    x: 420,
-    y: 722,
-    size: 9,
-    font: fontHelveticaBold,
-    color: rgb(0.06, 0.65, 0.4),
-  });
+  const items = order.items?.length
+    ? order.items
+    : [
+        {
+          product_name: "Custom print job",
+          width_mm: 0,
+          height_mm: 0,
+          material: "",
+          quantity: 1,
+          unit_price_cents: order.subtotal_cents,
+          total_price_cents: order.subtotal_cents,
+        },
+      ];
+  for (const it of items) {
+    const hsn = (it as { hsn_code?: string | null }).hsn_code ?? "";
+    text(page, it.product_name, 56, y, 9, bold);
+    if (it.width_mm) text(page, `${it.width_mm} x ${it.height_mm} mm, ${it.material}`, 56, y - 11, 8, regular, muted);
+    text(page, hsn, 290, y);
+    right(String(it.quantity), 360, y);
+    right(inr(it.unit_price_cents), 430, y);
+    right(inr(it.total_price_cents), 540, y);
+    y -= 32;
+  }
 
-  // Divider
-  page.drawLine({
-    start: { x: 50, y: 700 },
-    end: { x: 545, y: 700 },
-    thickness: 1,
-    color: grayLine,
-  });
+  page.drawLine({ start: { x: 50, y: y + 10 }, end: { x: 545, y: y + 10 }, thickness: 1, color: line });
 
-  // 2. Bill To Information
-  page.drawText("INVOICE TO:", {
-    x: 50,
-    y: 675,
-    size: 9,
-    font: fontHelveticaBold,
-    color: muted,
-  });
+  // Totals
+  const rows: Array<[string, number]> = [["Taxable value", order.subtotal_cents]];
+  if (isInterState) rows.push(["IGST", igst]);
+  else {
+    rows.push(["CGST", order.cgst_cents ?? Math.floor(order.tax_cents / 2)]);
+    rows.push(["SGST", order.sgst_cents ?? order.tax_cents - Math.floor(order.tax_cents / 2)]);
+  }
+  for (const [label, amount] of rows) {
+    text(page, label, 360, y - 4);
+    right(inr(amount), 540, y - 4);
+    y -= 16;
+  }
+  page.drawLine({ start: { x: 355, y: y + 6 }, end: { x: 545, y: y + 6 }, thickness: 1, color: line });
+  text(page, "Total", 360, y - 8, 11, bold);
+  right(inr(order.total_cents), 540, y - 8, 11, bold);
 
-  page.drawText(order.customer_name || "Valued Customer", {
-    x: 50,
-    y: 658,
-    size: 11,
-    font: fontHelveticaBold,
-    color: black,
-  });
+  text(page, "This is a computer-generated invoice.", 50, 60, 8, regular, muted);
+  text(page, `Order ${order.order_number}`, 50, 48, 8, regular, muted);
 
-  page.drawText(order.customer_email || "", {
-    x: 50,
-    y: 644,
-    size: 9,
-    font: fontHelvetica,
-    color: muted,
-  });
-
-  page.drawText(
-    `${order.shipping_address.line1}, ${order.shipping_address.city}, ${order.shipping_address.postal_code}`,
-    {
-      x: 50,
-      y: 630,
-      size: 9,
-      font: fontHelvetica,
-      color: muted,
-    }
-  );
-
-  // 3. Line Items Table Header
-  const tableTop = 580;
-  page.drawRectangle({
-    x: 50,
-    y: tableTop - 5,
-    width: 495,
-    height: 25,
-    color: rgb(0.95, 0.96, 0.98),
-  });
-
-  page.drawText("Description", { x: 60, y: tableTop + 3, size: 9, font: fontHelveticaBold, color: black });
-  page.drawText("Qty", { x: 340, y: tableTop + 3, size: 9, font: fontHelveticaBold, color: black });
-  page.drawText("Unit Rate", { x: 400, y: tableTop + 3, size: 9, font: fontHelveticaBold, color: black });
-  page.drawText("Line Total", { x: 480, y: tableTop + 3, size: 9, font: fontHelveticaBold, color: black });
-
-  // Line Item Row
-  const rowY = tableTop - 30;
-  page.drawText(`Custom Print Manufacturing (${order.order_number})`, {
-    x: 60,
-    y: rowY,
-    size: 9,
-    font: fontHelvetica,
-    color: black,
-  });
-
-  page.drawText("1 batch", { x: 340, y: rowY, size: 9, font: fontHelvetica, color: black });
-  page.drawText(`£${(order.subtotal_cents / 100).toFixed(2)}`, { x: 400, y: rowY, size: 9, font: fontHelvetica, color: black });
-  page.drawText(`£${(order.subtotal_cents / 100).toFixed(2)}`, { x: 480, y: rowY, size: 9, font: fontHelveticaBold, color: black });
-
-  // Table Bottom Divider
-  page.drawLine({
-    start: { x: 50, y: rowY - 15 },
-    end: { x: 545, y: rowY - 15 },
-    thickness: 1,
-    color: grayLine,
-  });
-
-  // 4. Financial Totals (Bottom-Right)
-  const totalsY = rowY - 45;
-  page.drawText("Net Subtotal (excl. VAT):", { x: 340, y: totalsY, size: 9, font: fontHelvetica, color: muted });
-  page.drawText(`£${(order.subtotal_cents / 100).toFixed(2)}`, { x: 480, y: totalsY, size: 9, font: fontHelvetica, color: black });
-
-  page.drawText("VAT @ 20% (Standard UK):", { x: 340, y: totalsY - 18, size: 9, font: fontHelvetica, color: muted });
-  page.drawText(`£${(order.tax_cents / 100).toFixed(2)}`, { x: 480, y: totalsY - 18, size: 9, font: fontHelvetica, color: black });
-
-  page.drawRectangle({
-    x: 330,
-    y: totalsY - 48,
-    width: 215,
-    height: 24,
-    color: rgb(0.95, 0.96, 0.98),
-  });
-
-  page.drawText("TOTAL GROSS PAID:", { x: 340, y: totalsY - 40, size: 10, font: fontHelveticaBold, color: black });
-  page.drawText(`£${(order.total_cents / 100).toFixed(2)}`, { x: 475, y: totalsY - 40, size: 11, font: fontHelveticaBold, color: orange });
-
-  // 5. Accounting Footnote
-  page.drawText("Accounting Integration: Exported to Xero Accounting Schema (ACCREC / Sales 200 / OUTPUT2).", {
-    x: 50,
-    y: 80,
-    size: 8,
-    font: fontHelvetica,
-    color: muted,
-  });
-
-  page.drawText("Thank you for your business. W2P Print House · All rights reserved.", {
-    x: 50,
-    y: 65,
-    size: 8,
-    font: fontHelvetica,
-    color: muted,
-  });
-
-  return await pdfDoc.save();
+  return pdf.save();
 }

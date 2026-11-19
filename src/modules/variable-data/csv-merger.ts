@@ -1,6 +1,7 @@
 import Papa from "papaparse";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import { MM_TO_PT } from "../print-engine/pdf-generator";
+import { PDFDocument, rgb } from "pdf-lib";
+import { MM_TO_PT, embedFonts } from "../print-engine/production-renderer";
+import { fitText } from "../print-engine/text-fit";
 import { generateStandardPrintFileName } from "../print-engine/file-naming";
 
 export interface VariableDataRow {
@@ -76,8 +77,8 @@ export async function mergeVariableDataCsv(
   const trimOffsetY = (slugMarginMm + bleedMm) * MM_TO_PT;
 
   const pdfDoc = await PDFDocument.create();
-  const fontHelvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontHelveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  // Unicode font: athlete names may contain any script.
+  const { regular: fontHelvetica, bold: fontHelveticaBold } = await embedFonts(pdfDoc);
 
   const black = rgb(0.07, 0.08, 0.1);
   const orange = rgb(1.0, 0.35, 0.12);
@@ -116,9 +117,12 @@ export async function mergeVariableDataCsv(
       color: orange,
     });
 
-    // Large Center Identification Number (Bib # / Plate #)
-    // Scale font size dynamically based on number of digits
-    const numSize = numberVal.length > 4 ? 48 : 68;
+    // Large centre number, fitted to the trim width.
+    const numSize = fitText(
+      numberVal,
+      { maxWidth: trimWidthPt - 40, minFontSize: 18, maxFontSize: Math.min(68, trimHeightPt * 0.45) },
+      (t, size) => fontHelveticaBold.widthOfTextAtSize(t, size)
+    ).fontSize;
     page.drawText(numberVal, {
       x: trimOffsetX + 20,
       y: trimOffsetY + trimHeightPt / 2 - 16,
@@ -129,14 +133,11 @@ export async function mergeVariableDataCsv(
 
     // Per-Placeholder Fitting: Shrink-to-fit name text (§ 04 & § 07)
     if (nameVal) {
-      const maxNameWidth = trimWidthPt - 40;
-      let nameFontSize = 18;
-      let textWidth = fontHelveticaBold.widthOfTextAtSize(nameVal, nameFontSize);
-
-      while (textWidth > maxNameWidth && nameFontSize > 9) {
-        nameFontSize -= 1;
-        textWidth = fontHelveticaBold.widthOfTextAtSize(nameVal, nameFontSize);
-      }
+      const nameFontSize = fitText(
+        nameVal.toUpperCase(),
+        { maxWidth: trimWidthPt - 40, minFontSize: 7, maxFontSize: 18, minTracking: -0.04 },
+        (t, size) => fontHelveticaBold.widthOfTextAtSize(t, size)
+      ).fontSize;
 
       page.drawText(nameVal.toUpperCase(), {
         x: trimOffsetX + 20,

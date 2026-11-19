@@ -27,7 +27,7 @@ export async function PATCH(
     const result = await updateUserStatus(auth.user!.id, id, isActive);
 
     if (!result.success || !result.user) {
-      return NextResponse.json({ error: result.error || "Status update failed" }, { status: 400 });
+      return NextResponse.json({ error: result.error || "Status update failed" }, { status: result.error === "Target user not found" ? 404 : 400 });
     }
 
     await logAdminAction(

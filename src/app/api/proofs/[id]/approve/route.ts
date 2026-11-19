@@ -1,95 +1,92 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkApprovalGate } from "@/modules/proofs/proof-generator";
+import { z } from "zod";
 import { safeSendNotificationEmail } from "@/modules/email/email-service";
 import { getAuthUser } from "@/lib/server-auth";
-import { getOrderById, updateOrderStageWithVersion } from "@/modules/orders/order-store";
-import { updateProof } from "@/modules/proofs/proofs-store";
-import { z } from "zod";
+import { getOrderById, updateOrderStageWithVersion, setOrderApprovedProof } from "@/modules/orders/order-store";
+import { getProofById, getLatestProofForDraft, updateProof } from "@/modules/proofs/proofs-store";
+import { db, unwrap } from "@/lib/supabase/server";
 
 const ApproveProofSchema = z.object({
-  approvedBy: z.string().email().optional(),
-  orderId: z.string(),
+  orderId: z.string().min(1),
   version: z.number().int().positive(),
 });
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/**
+ * Customer approval of a REVISED proof on a paid order (PRD § 08).
+ *
+ * Proofs are normally approved before payment; staff reopen the PROOF stage when
+ * artwork must change after payment. Approval is only accepted while the order is
+ * at PROOF, for the latest version, by the order's owner. The order then records
+ * the approved version + fingerprint and moves to PRODUCTION.
+ */
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await params;
-    const body = await req.json();
-    const validated = ApproveProofSchema.safeParse(body);
-
-    if (!validated.success) {
-      return NextResponse.json(
-        { error: "Invalid approval payload", details: validated.error.format() },
-        { status: 400 }
-      );
-    }
-
     const sessionUser = await getAuthUser(req);
-    const { orderId, version } = validated.data;
-    const order = await getOrderById(orderId);
-
-    if (!order) {
-      return NextResponse.json({ error: `Order ${orderId} not found` }, { status: 404 });
+    if (!sessionUser) {
+      return NextResponse.json({ error: "Unauthorized: Valid session required" }, { status: 401 });
     }
 
-    // Authorization check: User must own the order or be an admin
-    if (sessionUser && sessionUser.role !== "admin") {
-      const isOwner =
-        order.customer_id === sessionUser.id;
-      if (!isOwner) {
-        return NextResponse.json(
-          { error: "Forbidden: You do not own this order's proof" },
-          { status: 403 }
-        );
-      }
+    const { id } = await params;
+    const validated = ApproveProofSchema.safeParse(await req.json().catch(() => null));
+    if (!validated.success) {
+      return NextResponse.json({ error: "Invalid approval payload", details: validated.error.format() }, { status: 400 });
     }
 
-    const effectiveApproverEmail = sessionUser?.email || validated.data.approvedBy || order.customer_email || "customer@example.com";
-    const effectiveApproverName = sessionUser?.full_name || order.customer_name || "Valued Customer";
+    const order = await getOrderById(validated.data.orderId);
+    const proof = await getProofById(id);
+    if (!order || !proof || proof.order_id !== order.order_number || !order.draft_id) {
+      return NextResponse.json({ error: "Proof not found for this order" }, { status: 404 });
+    }
+    if (sessionUser.role !== "admin" && order.customer_id !== sessionUser.id) {
+      return NextResponse.json({ error: "Forbidden: You do not own this order's proof" }, { status: 403 });
+    }
+    if (order.pipeline_stage !== "PROOF") {
+      return NextResponse.json({ error: `This order is not awaiting proof approval (stage: ${order.pipeline_stage}).` }, { status: 409 });
+    }
+
+    const latest = await getLatestProofForDraft(order.draft_id);
+    if (!latest || latest.id !== proof.id || proof.version_number !== validated.data.version) {
+      return NextResponse.json({ error: "Only the latest proof version can be approved." }, { status: 409 });
+    }
+    if (proof.status !== "pending_review") {
+      return NextResponse.json({ error: `This proof is ${proof.status.replace("_", " ")}.` }, { status: 409 });
+    }
+
     const approvedAt = new Date().toISOString();
+    await updateProof(id, { status: "approved", approved_by: sessionUser.email, approved_at: approvedAt });
+    unwrap(await db().from("draft_proofs").update({ approved_by: sessionUser.id }).eq("id", id), "Record approver");
+    await setOrderApprovedProof(order.id, proof.version_number, latest.sha256);
 
-    const gateResult = checkApprovalGate("approved");
-
-    // Update in-memory / persistent proof store
-    await updateProof(id, {
-      status: "approved",
-      approved_by: effectiveApproverEmail,
-      approved_at: approvedAt,
-    });
-
-    // Advance order proof status
-    await updateOrderStageWithVersion(
-      orderId,
+    const moved = await updateOrderStageWithVersion(
+      order.order_number,
       "PRODUCTION",
-      undefined,
-      effectiveApproverEmail,
-      `Proof v${version} approved by ${effectiveApproverEmail}`
+      "PROOF",
+      sessionUser.email,
+      `Proof v${proof.version_number} approved by ${sessionUser.email}`
     );
+    if (!moved.success) {
+      return NextResponse.json({ error: moved.error || "Could not advance the order." }, { status: moved.conflict ? 409 : 400 });
+    }
 
-    // PRD § 13: Dispatch proof_approved email notification
     await safeSendNotificationEmail({
-      to: effectiveApproverEmail,
-      recipientName: effectiveApproverName,
+      to: order.customer_email || sessionUser.email,
+      recipientName: order.customer_name || sessionUser.full_name || "Customer",
       event: "proof_approved",
-      orderId,
-      orderNumber: orderId,
-      version,
+      orderId: order.id,
+      orderNumber: order.order_number,
+      version: proof.version_number,
+      proofHash: latest.sha256,
     });
 
     return NextResponse.json({
       success: true,
       proofId: id,
-      orderId,
-      version,
+      orderId: order.order_number,
+      version: proof.version_number,
       status: "approved",
-      approvedBy: effectiveApproverEmail,
+      approvedBy: sessionUser.email,
       approvedAt,
-      approvalGate: gateResult,
-      message: `Proof v${version} for order ${orderId} successfully approved. 300 DPI production files are now UNLOCKED.`,
+      message: `Proof v${proof.version_number} approved. Production files are unlocked.`,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Approval processing error";

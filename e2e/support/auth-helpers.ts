@@ -73,3 +73,21 @@ export async function apiToken(
   }
   return (await res.json()).token as string;
 }
+
+/**
+ * Creates a job draft through the API from the page's browser context, so the
+ * draft is owned by that browser (guest cookie) or its signed-in account.
+ */
+export async function createDraftInBrowser(
+  page: Page,
+  draft: { productId: string; widthMm: number; heightMm: number; materialId: string; quantity: number }
+): Promise<{ id: string; productSlug: string }> {
+  if (page.url() === "about:blank") {
+    await page.goto("/");
+  }
+  const res = await page.request.post("/api/drafts", { data: draft });
+  if (res.status() !== 201) {
+    throw new Error(`Draft creation failed: HTTP ${res.status()} ${await res.text()}`);
+  }
+  return (await res.json()).draft;
+}

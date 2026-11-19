@@ -1,4 +1,5 @@
 "use client";
+import { formatINR } from "@/modules/pricing/gst";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -22,6 +23,8 @@ import {
   Phone,
 } from "lucide-react";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function CustomerDashboardView() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -29,7 +32,6 @@ export function CustomerDashboardView() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [proofs, setProofs] = useState<Proof[]>([]);
   const [savedDesigns, setSavedDesigns] = useState<SavedDesign[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(Phase 8): loading state is never shown to the user
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
   const [reorderSuccess, setReorderSuccess] = useState<string | null>(null);
   const [checkoutSuccessOrder, setCheckoutSuccessOrder] = useState<string | null>(null);
@@ -37,8 +39,7 @@ export function CustomerDashboardView() {
   const [selectedProofForReview, setSelectedProofForReview] = useState<Proof | null>(null);
 
   useEffect(() => {
-    const isSuccess = searchParams.get("checkout_success") === "true";
-    if (!isLoading && (!user || role === "visitor") && !isSuccess) {
+    if (!isLoading && (!user || role === "visitor")) {
       router.replace("/login?redirect=/dashboard");
     }
   }, [user, role, isLoading, router, searchParams]);
@@ -79,38 +80,40 @@ export function CustomerDashboardView() {
     }
   }, [user, role]);
 
+  // Returning from Stripe Checkout: confirm the payment with the server (which asks
+  // Stripe directly), then refresh the order list.
   useEffect(() => {
-    const isSuccess = searchParams.get("checkout_success") === "true";
-    const orderNum = searchParams.get("order_number");
-    if (isSuccess && orderNum) {
-      setCheckoutSuccessOrder(orderNum);
-      fetchCustomerData();
-    }
+    const sessionId = searchParams.get("session_id");
+    if (searchParams.get("checkout") !== "success" || !sessionId || !user) return;
+    fetch("/api/checkout/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.orderNumber) setCheckoutSuccessOrder(data.orderNumber);
+        fetchCustomerData();
+      })
+      .catch(() => fetchCustomerData());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per return from Stripe
   }, [searchParams, user]);
 
-  // Handle 1-click reorder (§ 09, § 10)
-  // TODO(Phase 8, bug B18): the order argument is ignored; every reorder recreates a hardcoded 75x75mm vinyl x100 job.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // One-click reorder (§ 09, § 10): the server copies the approved artwork into a
+  // new job that already carries the approved proof, then we go straight to checkout.
+  const [reorderError, setReorderError] = useState<string | null>(null);
+  const [reorderingOrder, setReorderingOrder] = useState<string | null>(null);
   const handleReorder = async (order: Order) => {
+    setReorderError(null);
+    setReorderingOrder(order.order_number);
     try {
-      const res = await fetch("/api/drafts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: "custom-die-cut-vinyl",
-          widthMm: 75,
-          heightMm: 75,
-          materialId: "gloss-white",
-          quantity: 100,
-          customerId: user?.id || null,
-          customerEmail: user?.email || null,
-        }),
-      });
+      const res = await fetch(`/api/orders/${order.order_number}/reorder`, { method: "POST" });
       const data = await res.json();
-      const draftId = data.draft.id;
-      router.push(`/designer/${data.draft.productSlug}?draft=${draftId}`);
+      if (!res.ok) throw new Error(data.error || "Reorder failed");
+      router.push(data.checkoutUrl);
     } catch (err) {
-      console.error("Reorder creation error:", err);
+      setReorderError(err instanceof Error ? err.message : "Reorder failed");
+      setReorderingOrder(null);
     }
   };
 
@@ -120,15 +123,15 @@ export function CustomerDashboardView() {
     if (!targetProof) return;
 
     try {
-      const res = await fetch(`/api/proofs/${proofId}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: targetProof.order_id,
-          version: targetProof.version_number,
-          approvedBy: user?.email,
-        }),
-      });
+      // Proofs of unpaid jobs are approved on the job draft; revised proofs of paid orders on the order.
+      const isDraftProof = UUID_PATTERN.test(targetProof.order_id);
+      const res = isDraftProof
+        ? await fetch(`/api/drafts/${targetProof.order_id}/approve-proof`, { method: "POST" })
+        : await fetch(`/api/proofs/${proofId}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId: targetProof.order_id, version: targetProof.version_number }),
+          });
 
       if (res.ok) {
         setProofs((prev) =>
@@ -155,16 +158,18 @@ export function CustomerDashboardView() {
     if (!targetProof) return;
 
     try {
-      const res = await fetch(`/api/proofs/${proofId}/reject`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: targetProof.order_id,
-          currentVersion: targetProof.version_number,
-          feedback,
-          customerEmail: user?.email,
-        }),
-      });
+      const isDraftProof = UUID_PATTERN.test(targetProof.order_id);
+      const res = isDraftProof
+        ? await fetch(`/api/drafts/${targetProof.order_id}/request-changes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ feedback }),
+          })
+        : await fetch(`/api/proofs/${proofId}/reject`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId: targetProof.order_id, currentVersion: targetProof.version_number, feedback }),
+          });
 
       if (res.ok) {
         setProofs((prev) =>
@@ -222,7 +227,7 @@ export function CustomerDashboardView() {
               Payment Confirmed & Order #{checkoutSuccessOrder} Placed!
             </h3>
             <p className="text-xs text-muted-foreground leading-relaxed font-sans">
-              Your transactional single-order payment has been processed securely. The job has officially entered the <strong>ORDER</strong> stage in our production pipeline. A VAT tax invoice is ready below.
+              Your transactional single-order payment has been processed securely. The job has officially entered the <strong>ORDER</strong> stage in our production pipeline. A GST tax invoice is ready below.
             </p>
           </div>
         </div>
@@ -280,6 +285,19 @@ export function CustomerDashboardView() {
         <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           <span>{reorderSuccess}</span>
+        </div>
+      )}
+
+      {reorderError && (
+        <div role="alert" className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">
+          {reorderError}
+        </div>
+      )}
+
+      {isLoadingData && (
+        <div role="status" className="text-sm text-muted-foreground flex items-center gap-2" data-testid="dashboard-loading">
+          <span className="w-3 h-3 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" aria-hidden="true" />
+          Loading your orders, proofs and designs…
         </div>
       )}
 
@@ -342,7 +360,7 @@ export function CustomerDashboardView() {
               <ShoppingBag className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
               <h3 className="font-heading font-bold text-base text-foreground mb-1">No Orders Placed Yet</h3>
               <p className="text-xs text-muted-foreground max-w-sm mx-auto mb-4">
-                Custom print jobs, manufacturing status updates, and downloadable VAT tax invoices will appear here once you place an order.
+                Custom print jobs, manufacturing status updates, and downloadable GST tax invoices will appear here once you place an order.
               </p>
               <Button asChild size="sm" className="text-xs font-semibold bg-brand-500 hover:bg-brand-600">
                 <Link href="/#divisions">Browse Products & Catalog</Link>
@@ -377,7 +395,7 @@ export function CustomerDashboardView() {
                         </div>
 
                         <div className="text-xs text-muted-foreground font-mono space-y-0.5">
-                          <div>Placed: {new Date(ord.created_at).toLocaleDateString("en-GB", { dateStyle: "medium" })}</div>
+                          <div>Placed: {new Date(ord.created_at).toLocaleDateString("en-IN", { dateStyle: "medium" })}</div>
                           <div data-testid="order-shipping-address">
                             Shipping to: {ord.shipping_address?.line1}, {ord.shipping_address?.city}, {ord.shipping_address?.postal_code}, {ord.shipping_address?.country}
                           </div>
@@ -386,9 +404,9 @@ export function CustomerDashboardView() {
 
                       <div className="flex flex-wrap items-center gap-3 pt-2 lg:pt-0 border-t lg:border-t-0">
                         <div className="text-right mr-2">
-                          <span className="text-[10px] font-mono text-muted-foreground block">TOTAL (INC. VAT)</span>
+                          <span className="text-[10px] font-mono text-muted-foreground block">TOTAL (INC. GST)</span>
                           <span className="font-mono font-bold text-lg text-foreground">
-                            £{(ord.total_cents / 100).toFixed(2)}
+                            {formatINR(ord.total_cents)}
                           </span>
                         </div>
 
@@ -400,21 +418,25 @@ export function CustomerDashboardView() {
                             window.open(`/api/orders/${ord.order_number}/invoice`, "_blank");
                           }}
                           className="text-xs font-mono"
-                          title="Download Xero-compliant VAT invoice PDF"
+                          title="Download Xero-compliant GST invoice PDF"
                         >
                           <Receipt className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                           Invoice PDF
                         </Button>
 
                         {/* 1-Click Reorder (§ 10 Module 5) */}
-                        <Button
-                          size="sm"
-                          onClick={() => handleReorder(ord)}
-                          className="font-semibold text-xs shadow-sm bg-brand-500 hover:bg-brand-600"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-                          1-Click Reorder
-                        </Button>
+                        {ord.payment_status === "paid" && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleReorder(ord)}
+                            disabled={reorderingOrder !== null}
+                            className="font-semibold text-xs shadow-sm bg-brand-500 hover:bg-brand-600"
+                            data-testid="reorder-button"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                            {reorderingOrder === ord.order_number ? "Preparing…" : "1-Click Reorder"}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -500,7 +522,7 @@ export function CustomerDashboardView() {
                       {prf.approved_at && (
                         <div className="p-3 rounded bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 text-emerald-800 dark:text-emerald-300 text-xs font-mono">
                           <span className="font-bold block">Approved for Manufacture:</span>
-                          {new Date(prf.approved_at).toLocaleString("en-GB")}
+                          {new Date(prf.approved_at).toLocaleString("en-IN")}
                         </div>
                       )}
                     </CardContent>
@@ -577,7 +599,7 @@ export function CustomerDashboardView() {
                     <div className="pt-3 border-t flex gap-2">
                       <Button
                         size="sm"
-                        onClick={() => router.push(`/designer/${des.product_id}`)}
+                        onClick={() => router.push(`/designer/${(des as SavedDesign & { product_slug?: string }).product_slug || des.product_id}?design=${des.id}`)}
                         className="w-full text-xs font-semibold"
                       >
                         Open in Designer

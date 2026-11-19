@@ -11,6 +11,8 @@ import {
   verifySignedDownloadToken,
 } from "../src/modules/orders/order-store";
 import { getUserByEmail } from "../src/modules/auth/users-store";
+import { createOrder, reserveOrderNumber } from "../src/modules/orders/order-store";
+import { db } from "../src/lib/supabase/server";
 import { getAuditLogs } from "../src/modules/audit/audit-store";
 
 test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §15, §16)", () => {
@@ -18,6 +20,11 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
 
   // Reset the demo accounts once for this file (the seed talks to Supabase and is not instant).
   test.beforeAll(async () => {
+    await seedDatabase();
+  });
+
+  // These tests deactivate an account and edit catalogue prices: restore the shared database afterwards.
+  test.afterAll(async () => {
     await seedDatabase();
   });
 
@@ -42,55 +49,43 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
   }) => {
     setupErrorListeners(page);
 
-    // 1. Place a live order as Customer A
-    const liveOrderA = {
-      order_number: "W2P-2026-LIVE-01",
-      customer_id: "usr-cust-1",
+    // 1-2. Place a live order for Customer A and Customer B (created server-side for their real accounts)
+    const customerA = (await getUserByEmail(TEST_USERS.customerA.email))!;
+    const customerB = (await getUserByEmail(TEST_USERS.customerB.email))!;
+    const { order: liveOrderA } = await createOrder({
+      id: "",
+      order_number: await reserveOrderNumber(),
+      customer_id: customerA.id,
       customer_name: "Sarah Jenkins",
-      customer_email: "sarah@enduroclub.uk",
-      pipeline_stage: "ORDER" as const,
-      payment_status: "paid" as const,
+      customer_email: customerA.email,
+      pipeline_stage: "ORDER",
+      payment_status: "paid",
       subtotal_cents: 5000,
-      tax_cents: 1000,
-      total_cents: 6000,
-      currency: "GBP",
-      division_slug: "labels-stickers" as const,
-      shipping_address: {
-        name: "Sarah Jenkins",
-        line1: "10 Downing Street",
-        city: "London",
-        postal_code: "SW1A 2AA",
-        country: "United Kingdom",
-      },
-    };
-
-    const resA = await request.post("/api/orders", { data: liveOrderA });
-    expect(resA.ok()).toBeTruthy();
-
-    // 2. Place a live order as Customer B
-    const liveOrderB = {
-      order_number: "W2P-2026-LIVE-02",
-      customer_id: "usr-cust-2",
+      tax_cents: 900,
+      total_cents: 5900,
+      currency: "INR",
+      division_slug: "labels-stickers",
+      shipping_address: { name: "Sarah Jenkins", line1: "10 Janpath", city: "New Delhi", postal_code: "110001", country: "India" },
+      created_at: "",
+      updated_at: "",
+    });
+    const { order: liveOrderB } = await createOrder({
+      id: "",
+      order_number: await reserveOrderNumber(),
+      customer_id: customerB.id,
       customer_name: "Customer B",
-      customer_email: "customerb@example.com",
-      pipeline_stage: "ORDER" as const,
-      payment_status: "paid" as const,
+      customer_email: customerB.email,
+      pipeline_stage: "ORDER",
+      payment_status: "paid",
       subtotal_cents: 3500,
-      tax_cents: 700,
-      total_cents: 4200,
-      currency: "GBP",
-      division_slug: "race-event-numbers" as const,
-      shipping_address: {
-        name: "Customer B",
-        line1: "74 George Street",
-        city: "Edinburgh",
-        postal_code: "EH2 2LR",
-        country: "United Kingdom",
-      },
-    };
-
-    const resB = await request.post("/api/orders", { data: liveOrderB });
-    expect(resB.ok()).toBeTruthy();
+      tax_cents: 630,
+      total_cents: 4130,
+      currency: "INR",
+      division_slug: "race-event-numbers",
+      shipping_address: { name: "Customer B", line1: "74 Marine Drive", city: "Mumbai", postal_code: "400002", country: "India" },
+      created_at: "",
+      updated_at: "",
+    });
 
     // 3. Login as Admin
     await page.goto("/login");
@@ -101,14 +96,19 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
 
     // 4. Verify both live orders appear in admin list
     await expect(page.locator(`text=${liveOrderA.order_number}`)).toBeVisible();
-    await expect(page.locator("text=10 Downing Street")).toBeVisible();
+    await expect(page.locator("text=10 Janpath")).toBeVisible();
 
     await expect(page.locator(`text=${liveOrderB.order_number}`)).toBeVisible();
-    await expect(page.locator("text=74 George Street")).toBeVisible();
+    await expect(page.locator("text=74 Marine Drive")).toBeVisible();
 
-    // 5. Verify pending and cancelled orders also show in admin list
-    await expect(page.locator("text=W2P-2026-00102")).toBeVisible(); // pending_payment
-    await expect(page.locator("text=W2P-2026-00202")).toBeVisible(); // cancelled
+    // 5. Pending and cancelled orders are listed for admins too (checked via the search API:
+    //    the shared database holds more orders than fit on the console's first page).
+    const adminToken = await apiToken(request, TEST_USERS.admin);
+    for (const [orderNumber, payment] of [["W2P-2026-00102", "pending"], ["W2P-2026-00202", "cancelled"]]) {
+      const res = await request.get(`/api/admin/orders?query=${orderNumber}`, { headers: { Authorization: `Bearer ${adminToken}` } });
+      const { orders } = await res.json();
+      expect(orders.map((o: { order_number: string; payment_status: string }) => [o.order_number, o.payment_status])).toContainEqual([orderNumber, payment]);
+    }
   });
 
   test("2. Filters, Search & Server Pagination: Alone and combined", async ({
@@ -270,23 +270,26 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
   }) => {
     const adminToken = await apiToken(request, TEST_USERS.admin);
     const headers = { Authorization: `Bearer ${adminToken}` };
+    const adminId = (await getUserByEmail(TEST_USERS.admin.email))!.id;
+    const customerBId = (await getUserByEmail(TEST_USERS.customerB.email))!.id;
+    const customerCId = (await getUserByEmail("customerc@example.com"))!.id;
 
     // 1. Promote Customer C to Admin
-    const promoteRes = await request.patch("/api/admin/users/usr-cust-3/role", {
+    const promoteRes = await request.patch(`/api/admin/users/${customerCId}/role`, {
       headers,
       data: { role: "admin" },
     });
     expect(promoteRes.status()).toBe(200);
 
     // 2. Demote Customer C back to Customer
-    const demoteRes = await request.patch("/api/admin/users/usr-cust-3/role", {
+    const demoteRes = await request.patch(`/api/admin/users/${customerCId}/role`, {
       headers,
       data: { role: "customer" },
     });
     expect(demoteRes.status()).toBe(200);
 
     // 3. Self-demotion safeguard: Admin cannot demote self
-    const selfDemoteRes = await request.patch("/api/admin/users/usr-admin-01/role", {
+    const selfDemoteRes = await request.patch(`/api/admin/users/${adminId}/role`, {
       headers,
       data: { role: "customer" },
     });
@@ -295,14 +298,14 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
     expect(selfDemoteJson.error).toContain("cannot demote your own admin account");
 
     // 4. Last-admin safeguard: Cannot demote the last remaining admin
-    const lastAdminRes = await request.patch("/api/admin/users/usr-admin-01/role", {
+    const lastAdminRes = await request.patch(`/api/admin/users/${adminId}/role`, {
       headers: { Authorization: `Bearer ${adminToken}` },
       data: { role: "customer" },
     });
     expect(lastAdminRes.status()).toBe(400);
 
     // 5. Deactivate user and verify login is blocked
-    const deactRes = await request.patch("/api/admin/users/usr-cust-2/status", {
+    const deactRes = await request.patch(`/api/admin/users/${customerBId}/status`, {
       headers,
       data: { isActive: false },
     });
@@ -374,21 +377,24 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
     expect(reportRes.status()).toBe(200);
     const report = await reportRes.json();
 
-    // Confirmed revenue = 4560 (ord-1) + 8800 (ord-3) + 5200 (ord-6) = 18560
-    expect(report.confirmedRevenueCents).toBe(18560);
-    expect(report.confirmedRevenueFormatted).toBe("£185.60");
-    expect(report.totalOrders).toBe(6);
-    expect(report.paidCount).toBe(3);
-    expect(report.pendingCount).toBe(1);
-    expect(report.cancelledCount).toBe(1);
+    // Compare with an independent aggregate straight from the orders table.
+    const { data: rows } = await db().from("orders").select("payment_status, total_paise, pipeline_stage");
+    const paid = (rows ?? []).filter((r) => r.payment_status === "paid");
+    expect(report.confirmedRevenueCents).toBe(paid.reduce((sum, r) => sum + r.total_paise, 0));
+    expect(report.currency).toBe("INR");
+    expect(report.totalOrders).toBe(rows!.length);
+    expect(report.paidCount).toBe(paid.length);
+    expect(report.pendingCount).toBe(rows!.filter((r) => r.payment_status === "pending").length);
+    expect(report.cancelledCount).toBe(rows!.filter((r) => r.payment_status === "cancelled").length);
+    const completedCount = rows!.filter((r) => r.pipeline_stage === "COMPLETED").length;
 
     // 2. Query archive: only COMPLETED order W2P-2026-00201
     const archiveRes = await request.get("/api/admin/archive", { headers });
     expect(archiveRes.status()).toBe(200);
     const archive = await archiveRes.json();
-    expect(archive.total).toBe(1);
-    expect(archive.orders[0].order_number).toBe("W2P-2026-00201");
-    expect(archive.orders[0].pipeline_stage).toBe("COMPLETED");
+    expect(archive.total).toBe(completedCount);
+    expect(archive.orders.some((o: { order_number: string }) => o.order_number === "W2P-2026-00201")).toBe(true);
+    expect(archive.orders.every((o: { pipeline_stage: string }) => o.pipeline_stage === "COMPLETED")).toBe(true);
   });
 
   test("8. Security: Customer and unauthenticated calls to admin endpoints are strictly denied (401 / 403)", async ({

@@ -1,8 +1,10 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
 import { SerializedCanvasState } from "../designer/types";
 import { generateStandardPrintFileName } from "./file-naming";
+import { addProductionPage, drawCropMarksAndSlug, drawDesign, embedFonts, MM_TO_PT as MM, PRODUCTION_DPI } from "./production-renderer";
+import { fitText } from "./text-fit";
 
-export const MM_TO_PT = 72 / 25.4; // ~2.834645 pt per mm
+export const MM_TO_PT = MM;
 
 export interface RenderPrintPdfOptions {
   orderId: string;
@@ -26,171 +28,50 @@ export interface GeneratedPdfResult {
 }
 
 /**
- * Server-side 300 DPI Production PDF Generator (§ 07)
- * Compiles production-ready PDF with real bleed, trim box, and crop marks.
+ * Single production PDF (admin render tool and tests). Draws a designer canvas when
+ * given, otherwise a simple fitted number/title layout. Uses the shared production
+ * renderer: real bleed/trim boxes, crop marks and an embedded Unicode font.
  */
-export async function generateProductionPdf(
-  options: RenderPrintPdfOptions
-): Promise<GeneratedPdfResult> {
-  const {
-    orderId,
-    productType,
-    widthMm,
-    heightMm,
-    bleedMm = 3.0,
-    canvasState,
-    customText,
-    customNumber,
-    subTitle,
-  } = options;
+export async function generateProductionPdf(options: RenderPrintPdfOptions): Promise<GeneratedPdfResult> {
+  const { orderId, productType, widthMm, heightMm, bleedMm = 3, canvasState, customText, customNumber, subTitle } = options;
+  const geo = { widthMm, heightMm, bleedMm };
 
-  // Margin for crop marks & technical slug info (10mm around bleed)
-  const slugMarginMm = 10;
+  const pdf = await PDFDocument.create();
+  const fonts = await embedFonts(pdf);
+  const { page, originX, originTopY } = addProductionPage(pdf, geo);
 
-  const trimWidthPt = widthMm * MM_TO_PT;
-  const trimHeightPt = heightMm * MM_TO_PT;
-
-  const bleedWidthPt = (widthMm + bleedMm * 2) * MM_TO_PT;
-  const bleedHeightPt = (heightMm + bleedMm * 2) * MM_TO_PT;
-
-  const totalPageWidthPt = (widthMm + (bleedMm + slugMarginMm) * 2) * MM_TO_PT;
-  const totalPageHeightPt = (heightMm + (bleedMm + slugMarginMm) * 2) * MM_TO_PT;
-
-  // Offsets from page origin (bottom-left in PDF)
-  const bleedOffsetX = slugMarginMm * MM_TO_PT;
-  const bleedOffsetY = slugMarginMm * MM_TO_PT;
-
-  const trimOffsetX = (slugMarginMm + bleedMm) * MM_TO_PT;
-  const trimOffsetY = (slugMarginMm + bleedMm) * MM_TO_PT;
-
-  // Create document
-  const pdfDoc = await PDFDocument.create();
-  const fontHelvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontHelveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-  const page = pdfDoc.addPage([totalPageWidthPt, totalPageHeightPt]);
-
-  // Set PDF Boxes for RIP (Raster Image Processors)
-  page.setMediaBox(0, 0, totalPageWidthPt, totalPageHeightPt);
-  page.setBleedBox(bleedOffsetX, bleedOffsetY, bleedWidthPt, bleedHeightPt);
-  page.setTrimBox(trimOffsetX, trimOffsetY, trimWidthPt, trimHeightPt);
-
-  // 1. Draw Bleed Area Background (Full artwork coverage)
-  page.drawRectangle({
-    x: bleedOffsetX,
-    y: bleedOffsetY,
-    width: bleedWidthPt,
-    height: bleedHeightPt,
-    color: rgb(0.98, 0.98, 0.99),
-  });
-
-  // 2. Draw Artwork Elements
-  if (canvasState && canvasState.elements && canvasState.elements.length > 0) {
-    // Render from serialized canvas JSON
-    for (const el of canvasState.elements) {
-      if (el.type === "text") {
-        const textX = trimOffsetX + (el.x / 2);
-        // Flip Y because PDF coordinates start from bottom-left
-        const textY = trimOffsetY + trimHeightPt - (el.y / 2) - 15;
-
-        page.drawText(el.text, {
-          x: Math.max(trimOffsetX, textX),
-          y: Math.max(trimOffsetY, textY),
-          size: Math.max(8, (el.fontSize || 16) * 0.75),
-          font: el.isBold ? fontHelveticaBold : fontHelvetica,
-          color: rgb(0.07, 0.08, 0.1),
-        });
-      } else if (el.type === "rect") {
-        const rectX = trimOffsetX + (el.x / 2);
-        const rectY = trimOffsetY + trimHeightPt - (el.y / 2) - ((el.height || 40) / 2);
-        page.drawRectangle({
-          x: rectX,
-          y: rectY,
-          width: Math.min(trimWidthPt, (el.width || 80) / 2),
-          height: (el.height || 40) / 2,
-          color: rgb(1.0, 0.35, 0.12), // Brand Tangerine
-        });
-      }
-    }
+  if (canvasState?.elements?.length) {
+    await drawDesign(pdf, page, { originX, originTopY }, { ...canvasState, dimensionsMm: { ...canvasState.dimensionsMm, ...geo } }, fonts);
   } else {
-    // Default High-Res Vector Spec Render (e.g. for Race Bibs / Plates)
+    const trimX = originX + bleedMm * MM;
+    const trimTop = originTopY - bleedMm * MM;
+    const trimW = widthMm * MM;
+    const trimH = heightMm * MM;
+    const measure = (font: typeof fonts.bold) => (t: string, s: number) => font.widthOfTextAtSize(t, s);
+
     const title = customText || productType.replace(/-/g, " ").toUpperCase();
+    const titleSize = fitText(title, { maxWidth: trimW - 20, minFontSize: 6, maxFontSize: 14 }, measure(fonts.bold)).fontSize;
+    page.drawText(title, { x: trimX + 10, y: trimTop - 10 - titleSize, size: titleSize, font: fonts.bold, color: rgb(0.9, 0.3, 0.1) });
+
     const number = customNumber || orderId.replace(/[^0-9]/g, "").slice(-3) || "001";
+    const numSize = fitText(number, { maxWidth: trimW - 20, minFontSize: 12, maxFontSize: Math.min(72, trimH * 0.4) }, measure(fonts.bold)).fontSize;
+    page.drawText(number, { x: trimX + 10, y: trimTop - trimH / 2 - numSize / 3, size: numSize, font: fonts.bold, color: rgb(0.07, 0.08, 0.1) });
 
-    // Big central identification number (e.g. for Race Bib or Plate)
-    page.drawText(number, {
-      x: trimOffsetX + 20,
-      y: trimOffsetY + trimHeightPt / 2 - 20,
-      size: Math.min(72, trimHeightPt * 0.4),
-      font: fontHelveticaBold,
-      color: rgb(0.07, 0.08, 0.1),
-    });
-
-    // Top Header
-    page.drawText(title, {
-      x: trimOffsetX + 20,
-      y: trimOffsetY + trimHeightPt - 30,
-      size: 14,
-      font: fontHelveticaBold,
-      color: rgb(1.0, 0.35, 0.12),
-    });
-
-    // Bottom Subtitle
     if (subTitle) {
-      page.drawText(subTitle, {
-        x: trimOffsetX + 20,
-        y: trimOffsetY + 20,
-        size: 10,
-        font: fontHelvetica,
-        color: rgb(0.3, 0.35, 0.4),
-      });
+      const subSize = fitText(subTitle, { maxWidth: trimW - 20, minFontSize: 5, maxFontSize: 10 }, measure(fonts.regular)).fontSize;
+      page.drawText(subTitle, { x: trimX + 10, y: trimTop - trimH + 10, size: subSize, font: fonts.regular, color: rgb(0.3, 0.35, 0.4) });
     }
   }
 
-  // 3. Draw Corner Crop Marks (Registration Marks around TrimBox)
-  const cropMarkLen = 15;
-  const black = rgb(0, 0, 0);
+  drawCropMarksAndSlug(page, geo, fonts, `ORDER ${orderId} | ${productType} | TRIM ${widthMm}x${heightMm}mm | BLEED ${bleedMm}mm`);
 
-  // Bottom-Left
-  page.drawLine({ start: { x: trimOffsetX - cropMarkLen, y: trimOffsetY }, end: { x: trimOffsetX, y: trimOffsetY }, thickness: 0.5, color: black });
-  page.drawLine({ start: { x: trimOffsetX, y: trimOffsetY - cropMarkLen }, end: { x: trimOffsetX, y: trimOffsetY }, thickness: 0.5, color: black });
-
-  // Bottom-Right
-  page.drawLine({ start: { x: trimOffsetX + trimWidthPt, y: trimOffsetY }, end: { x: trimOffsetX + trimWidthPt + cropMarkLen, y: trimOffsetY }, thickness: 0.5, color: black });
-  page.drawLine({ start: { x: trimOffsetX + trimWidthPt, y: trimOffsetY - cropMarkLen }, end: { x: trimOffsetX + trimWidthPt, y: trimOffsetY }, thickness: 0.5, color: black });
-
-  // Top-Left
-  page.drawLine({ start: { x: trimOffsetX - cropMarkLen, y: trimOffsetY + trimHeightPt }, end: { x: trimOffsetX, y: trimOffsetY + trimHeightPt }, thickness: 0.5, color: black });
-  page.drawLine({ start: { x: trimOffsetX, y: trimOffsetY + trimHeightPt }, end: { x: trimOffsetX, y: trimOffsetY + trimHeightPt + cropMarkLen }, thickness: 0.5, color: black });
-
-  // Top-Right
-  page.drawLine({ start: { x: trimOffsetX + trimWidthPt, y: trimOffsetY + trimHeightPt }, end: { x: trimOffsetX + trimWidthPt + cropMarkLen, y: trimOffsetY + trimHeightPt }, thickness: 0.5, color: black });
-  page.drawLine({ start: { x: trimOffsetX + trimWidthPt, y: trimOffsetY + trimHeightPt }, end: { x: trimOffsetX + trimWidthPt, y: trimOffsetY + trimHeightPt + cropMarkLen }, thickness: 0.5, color: black });
-
-  // 4. Draw Technical Slug Info (Outside Bleed Area for Production Operators)
-  const slugText = `ORDER: ${orderId} | TYPE: ${productType} | TRIM: ${widthMm}x${heightMm}mm | BLEED: +${bleedMm}mm | 300 DPI PRODUCTION READY`;
-  page.drawText(slugText, {
-    x: bleedOffsetX,
-    y: bleedOffsetY + bleedHeightPt + 8,
-    size: 7,
-    font: fontHelvetica,
-    color: rgb(0.4, 0.4, 0.4),
-  });
-
-  const fileName = generateStandardPrintFileName({
-    orderId,
-    productType,
-    extension: "pdf",
-  });
-
-  const pdfBytes = await pdfDoc.save();
-
+  const { width, height } = page.getSize();
   return {
-    fileName,
-    pdfBytes,
-    mediaBoxPt: { width: totalPageWidthPt, height: totalPageHeightPt },
-    trimBoxPt: { width: trimWidthPt, height: trimHeightPt },
+    fileName: generateStandardPrintFileName({ orderId, productType, extension: "pdf" }),
+    pdfBytes: await pdf.save(),
+    mediaBoxPt: { width, height },
+    trimBoxPt: { width: widthMm * MM, height: heightMm * MM },
     bleedMm,
-    dpi: 300,
+    dpi: PRODUCTION_DPI,
   };
 }

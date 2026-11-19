@@ -32,9 +32,8 @@ function LoginForm() {
       // Attach pending guest draft if any exists (§ 03)
       try {
         const pendingDraftId =
-          typeof window !== "undefined"
-            ? localStorage.getItem("w2p_pending_draft_id")
-            : null;
+          searchParams.get("draftId") ||
+          (typeof window !== "undefined" ? localStorage.getItem("w2p_pending_draft_id") : null);
 
         if (pendingDraftId && res.user?.id) {
           await fetch(`/api/drafts/${pendingDraftId}/attach-user`, {

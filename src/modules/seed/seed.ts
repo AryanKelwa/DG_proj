@@ -249,7 +249,7 @@ async function seedOrders(ids: Record<string, string>): Promise<void> {
       "Seed proof"
     );
 
-    const tax = price.vatAmountCents;
+    const tax = price.taxCents;
     const cgst = Math.floor(tax / 2);
     const order = unwrap(
       await db()

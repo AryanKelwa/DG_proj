@@ -284,7 +284,7 @@ Great news! Your order ${orderRef} has completed physical production and quality
 Shipping to:
 ${addr}
 
-You can download your official VAT tax invoice receipt and reorder with 1 click directly from your dashboard:
+You can download your official GST tax invoice receipt and reorder with 1 click directly from your dashboard:
 ${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard
 
 Thank you for choosing W2P!`;
@@ -300,9 +300,9 @@ Thank you for choosing W2P!`;
           <div style="margin-top: 6px;"><strong>Delivery Destination:</strong> ${addr}</div>
         </div>
 
-        <p>Your official VAT tax invoice and high-resolution print files are preserved in your account archive for seamless 1-click reordering.</p>
+        <p>Your official GST tax invoice and high-resolution print files are preserved in your account archive for seamless 1-click reordering.</p>
 
-        <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard" class="btn">Download VAT Invoice & View Order</a>`
+        <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard" class="btn">Download GST Invoice & View Order</a>`
       );
 
       return { subject, text, html };

@@ -28,7 +28,7 @@ export async function PATCH(
     const result = await updateUserRole(auth.user!.id, id, role as UserRole);
 
     if (!result.success || !result.user) {
-      return NextResponse.json({ error: result.error || "Role update failed" }, { status: 400 });
+      return NextResponse.json({ error: result.error || "Role update failed" }, { status: result.error === "Target user not found" ? 404 : 400 });
     }
 
     await logAdminAction(

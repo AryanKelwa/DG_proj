@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
+const GUEST_COOKIE = "w2p_guest";
+
 /**
  * 1. Keeps the Supabase session fresh (rotates auth cookies when the access token expires).
  * 2. Guards the admin console: /production is served only to active admins.
  *    API routes perform their own full authorisation checks; this is the page-level gate.
  */
 export async function middleware(req: NextRequest) {
-  const response = NextResponse.next({ request: req });
+  // Every browser gets an anonymous, httpOnly guest token so a visitor can own the
+  // job drafts they create before signing in. It is added to the request too, so
+  // server components and route handlers see it on the very first visit.
+  const newGuestToken = req.cookies.get(GUEST_COOKIE) ? null : crypto.randomUUID();
+  if (newGuestToken) req.cookies.set(GUEST_COOKIE, newGuestToken);
+
+  let response = NextResponse.next({ request: req });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,10 +24,9 @@ export async function middleware(req: NextRequest) {
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: (cookies: Array<{ name: string; value: string; options: CookieOptions }>) => {
-          for (const { name, value, options } of cookies) {
-            req.cookies.set(name, value);
-            response.cookies.set(name, value, options);
-          }
+          for (const { name, value } of cookies) req.cookies.set(name, value);
+          response = NextResponse.next({ request: req });
+          for (const { name, value, options } of cookies) response.cookies.set(name, value, options);
         },
       },
     }
@@ -37,8 +44,18 @@ export async function middleware(req: NextRequest) {
     }
 
     if (!(await isActiveAdmin(user.id))) {
-      return NextResponse.redirect(new URL("/dashboard?error=forbidden", req.url));
+      return NextResponse.rewrite(new URL("/forbidden", req.url), { status: 403 });
     }
+  }
+
+  if (newGuestToken) {
+    response.cookies.set(GUEST_COOKIE, newGuestToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: req.nextUrl.protocol === "https:",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
   }
 
   return response;

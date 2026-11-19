@@ -2,8 +2,10 @@ import crypto from "crypto";
 import { db, unwrap } from "@/lib/supabase/server";
 import { JobDraft, DraftStatus, DraftAuditLogEntry, DraftProofRecord, DraftOptions } from "@/types/draft";
 import { DivisionSlug } from "@/types/database";
-import { calculatePrintPrice, PricingBreakdown } from "@/modules/pricing/pricing-engine";
+import { calculatePrintPrice, PricingBreakdown, PricingValidationError, validateConfiguration } from "@/modules/pricing/pricing-engine";
 import { generateWatermarkedProofSvg } from "@/modules/proofs/proof-generator";
+import { renderDesignFragment, isCanvasState } from "@/modules/proofs/design-render";
+import { downloadFile, uploadFile, resolveStoredUrl, STORAGE_PREFIX } from "@/lib/storage";
 import { ExtendedProduct, getProductById } from "@/modules/catalog/catalog-store";
 
 /**
@@ -152,13 +154,17 @@ export interface CreateDraftInput {
   orientation?: "portrait" | "landscape" | "square";
   customerId?: string | null;
   customerEmail?: string | null;
+  /** SHA-256 of the creating visitor's guest cookie; used when there is no customer. */
+  guestTokenHash?: string | null;
 }
 
 export async function createDraft(input: CreateDraftInput): Promise<JobDraft> {
   const product = await getProductById(input.productId);
-  if (!product) {
+  if (!product || !product.is_active) {
     throw new Error(`Product '${input.productId}' not found`);
   }
+  const problem = validateConfiguration(product, input);
+  if (problem) throw new PricingValidationError(problem);
 
   const row = unwrap(
     await db()
@@ -167,6 +173,7 @@ export async function createDraft(input: CreateDraftInput): Promise<JobDraft> {
         product_id: product.id,
         customer_id: input.customerId || null,
         customer_email: input.customerEmail || null,
+        guest_token_hash: input.customerId ? null : input.guestTokenHash || null,
         status: "configured",
         quantity: input.quantity,
         options: {
@@ -299,7 +306,14 @@ export async function transitionDraftStatus(
   return (await getDraft(draftId))!;
 }
 
-/** Renders the stored, hashed proof for a draft version (§ 06, § 08). */
+/**
+ * Renders, stores and fingerprints the proof for a draft version (§ 06, § 08).
+ *
+ * The SVG shows the customer's actual artwork (designer canvas, or uploaded PNG/SVG);
+ * PDF/AI/EPS uploads get a labelled placeholder because they are checked by
+ * pre-press. The SHA-256 covers the rendered proof, the job configuration and the
+ * uploaded file bytes, so the approval log identifies exactly what was approved.
+ */
 export async function generateDraftProof(
   draft: JobDraft,
   version?: number,
@@ -310,34 +324,82 @@ export async function generateDraftProof(
   const material =
     product?.allowed_materials.find((m) => m.id === draft.options.materialId) ?? product?.allowed_materials[0];
 
-  const svg = generateWatermarkedProofSvg({
-    version: currentVersion,
-    widthMm: draft.options.widthMm,
-    heightMm: draft.options.heightMm,
-    materialName: material?.name ?? draft.options.materialId,
-    bleedMm: draft.options.bleedMm,
-    orderNumber: draft.id,
-    createdAt: new Date().toISOString(),
-  });
+  const { widthMm, heightMm, bleedMm } = draft.options;
+  let artworkFragment: string | undefined;
+  let placeholder: string | undefined;
+  let uploadHash = "";
+
+  if (draft.uploadedFileRef) {
+    const meta = (draft.designJson ?? {}) as { kind?: string; fileName?: string; contentType?: string };
+    const bytes = await downloadFile("artwork", draft.uploadedFileRef);
+    uploadHash = crypto.createHash("sha256").update(bytes).digest("hex");
+    if (meta.kind === "png" || meta.kind === "svg") {
+      const href = `data:${meta.contentType};base64,${bytes.toString("base64")}`;
+      artworkFragment = `<image x="0" y="0" width="${widthMm + 2 * bleedMm}" height="${heightMm + 2 * bleedMm}" preserveAspectRatio="xMidYMid meet" href="${href}"/>`;
+    } else {
+      placeholder = `${(meta.kind || "file").toUpperCase()} artwork: ${meta.fileName || "uploaded file"} (checked by pre-press)`;
+    }
+  } else if (isCanvasState(draft.designJson)) {
+    artworkFragment = renderDesignFragment(draft.designJson);
+  } else {
+    placeholder = "No artwork yet";
+  }
+
+  const createdAt = new Date().toISOString();
+  const svg = generateWatermarkedProofSvg(
+    {
+      version: currentVersion,
+      widthMm,
+      heightMm,
+      bleedMm,
+      materialName: material?.name ?? draft.options.materialId,
+      productName: product?.name,
+      orderNumber: draft.id,
+      createdAt,
+    },
+    artworkFragment,
+    placeholder
+  );
+
+  const fingerprint = crypto
+    .createHash("sha256")
+    .update(svg)
+    .update(JSON.stringify({ product: draft.productId, options: draft.options, quantity: draft.quantity }))
+    .update(uploadHash)
+    .digest("hex");
+
+  const path = `drafts/${draft.id}/v${currentVersion}-${fingerprint.slice(0, 12)}.svg`;
+  await uploadFile("proofs", path, Buffer.from(svg, "utf8"), "image/svg+xml");
 
   return {
     version: currentVersion,
-    renderedUrl: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
-    sha256Hash: crypto.createHash("sha256").update(svg).digest("hex"),
-    createdAt: new Date().toISOString(),
+    renderedUrl: `${STORAGE_PREFIX}proofs/${path}`,
+    sha256Hash: fingerprint,
+    createdAt,
   };
 }
 
 export async function approveDraftProof(draftId: string, actor: Actor): Promise<JobDraft> {
   const draft = await getDraft(draftId);
   if (!draft) throw new Error(`Draft ${draftId} not found`);
+  if (draft.status !== "proof_pending") {
+    throw new Error(
+      draft.status === "proof_approved"
+        ? `Proof v${draft.proofVersion} is already approved.`
+        : `A proof can only be approved while it is awaiting review (current status: ${draft.status}).`
+    );
+  }
 
   const activeProof =
     draft.proofs.find((p) => p.version === draft.proofVersion) ?? (await generateDraftProof(draft, draft.proofVersion));
   const now = new Date().toISOString();
 
   await saveProofRecord(draftId, { ...activeProof, approvedBy: actor.email, approvedAt: now });
-  unwrap(await db().from("drafts").update({ status: "proof_approved" }).eq("id", draftId), "Approve proof");
+  const approved = unwrap(
+    await db().from("drafts").update({ status: "proof_approved" }).eq("id", draftId).eq("status", "proof_pending").select("id"),
+    "Approve proof"
+  ) as Array<{ id: string }>;
+  if (approved.length === 0) throw new Error(`Draft ${draftId} changed concurrently; please retry.`);
   await logEvent(draftId, actor, "PROOF_APPROVED", draft.status, "proof_approved", {
     version: draft.proofVersion,
     sha256Hash: activeProof.sha256Hash,
@@ -350,6 +412,9 @@ export async function approveDraftProof(draftId: string, actor: Actor): Promise<
 export async function requestDraftProofChanges(draftId: string, feedback: string, actor: Actor): Promise<JobDraft> {
   const draft = await getDraft(draftId);
   if (!draft) throw new Error(`Draft ${draftId} not found`);
+  if (draft.status !== "proof_pending" && draft.status !== "proof_approved") {
+    throw new Error(`Changes can only be requested on a proof under review or approved but unpaid (current status: ${draft.status}).`);
+  }
 
   const current = draft.proofs.find((p) => p.version === draft.proofVersion) ?? {
     version: draft.proofVersion,
@@ -375,12 +440,28 @@ export async function requestDraftProofChanges(draftId: string, feedback: string
   return (await getDraft(draftId))!;
 }
 
+/** Server-only: the stored guest-token hash of a draft (never exposed in API responses). */
+export async function getDraftGuestTokenHash(draftId: string): Promise<string | null> {
+  if (!UUID_RE.test(draftId)) return null;
+  const row = unwrap(
+    await db().from("drafts").select("guest_token_hash").eq("id", draftId).maybeSingle(),
+    "Load draft owner"
+  ) as { guest_token_hash: string | null } | null;
+  return row?.guest_token_hash ?? null;
+}
+
 export async function attachDraftToUser(draftId: string, userId: string, userEmail: string): Promise<JobDraft> {
   const draft = await getDraft(draftId);
   if (!draft) throw new Error(`Draft ${draftId} not found`);
+  if (draft.customerId && draft.customerId !== userId) {
+    throw new Error("This job already belongs to another account.");
+  }
 
   unwrap(
-    await db().from("drafts").update({ customer_id: userId, customer_email: userEmail }).eq("id", draftId),
+    await db()
+      .from("drafts")
+      .update({ customer_id: userId, customer_email: userEmail, guest_token_hash: null })
+      .eq("id", draftId),
     "Attach draft"
   );
   await logEvent(draftId, { id: userId, email: userEmail }, "DRAFT_ATTACHED_TO_USER", draft.status, draft.status, {
@@ -391,7 +472,7 @@ export async function attachDraftToUser(draftId: string, userId: string, userEma
 }
 
 /** Server-authoritative price for a draft, recalculated from the catalogue. */
-export async function calculateDraftPrice(draft: JobDraft): Promise<PricingBreakdown> {
+export async function calculateDraftPrice(draft: JobDraft, placeOfSupply?: string | null): Promise<PricingBreakdown> {
   const product = await getProductById(draft.productId);
   if (!product) throw new Error(`Product '${draft.productId}' for draft ${draft.id} no longer exists`);
   return calculatePrintPrice({
@@ -400,5 +481,14 @@ export async function calculateDraftPrice(draft: JobDraft): Promise<PricingBreak
     heightMm: draft.options.heightMm,
     materialId: draft.options.materialId,
     quantity: draft.quantity,
+    placeOfSupply,
   });
+}
+
+/** API view of a draft: stored proof references become short-lived URLs. */
+export async function presentDraft(draft: JobDraft): Promise<JobDraft> {
+  const proofs = await Promise.all(
+    draft.proofs.map(async (p) => ({ ...p, renderedUrl: await resolveStoredUrl(p.renderedUrl) }))
+  );
+  return { ...draft, proofs };
 }
