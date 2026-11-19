@@ -38,8 +38,7 @@ export function CustomerDashboardView() {
   const [selectedProofForReview, setSelectedProofForReview] = useState<Proof | null>(null);
 
   useEffect(() => {
-    const isSuccess = searchParams.get("checkout_success") === "true";
-    if (!isLoading && (!user || role === "visitor") && !isSuccess) {
+    if (!isLoading && (!user || role === "visitor")) {
       router.replace("/login?redirect=/dashboard");
     }
   }, [user, role, isLoading, router, searchParams]);
@@ -80,13 +79,23 @@ export function CustomerDashboardView() {
     }
   }, [user, role]);
 
+  // Returning from Stripe Checkout: confirm the payment with the server (which asks
+  // Stripe directly), then refresh the order list.
   useEffect(() => {
-    const isSuccess = searchParams.get("checkout_success") === "true";
-    const orderNum = searchParams.get("order_number");
-    if (isSuccess && orderNum) {
-      setCheckoutSuccessOrder(orderNum);
-      fetchCustomerData();
-    }
+    const sessionId = searchParams.get("session_id");
+    if (searchParams.get("checkout") !== "success" || !sessionId || !user) return;
+    fetch("/api/checkout/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.orderNumber) setCheckoutSuccessOrder(data.orderNumber);
+        fetchCustomerData();
+      })
+      .catch(() => fetchCustomerData());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per return from Stripe
   }, [searchParams, user]);
 
   // Handle 1-click reorder (§ 09, § 10)

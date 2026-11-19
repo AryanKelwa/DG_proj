@@ -20,8 +20,10 @@ export async function GET(
     const access = await authorizeDraft(req, draft);
     if (!access.ok) return access.response;
 
+    // Optional ?placeOfSupply=<GST state code> prices the job for a delivery state.
+    const pos = req.nextUrl.searchParams.get("placeOfSupply");
     const [pricing, product, divisions] = await Promise.all([
-      calculateDraftPrice(draft),
+      calculateDraftPrice(draft, pos && /^\d{2}$/.test(pos) ? pos : null),
       getProductById(draft.productId),
       getAllDivisions(),
     ]);
