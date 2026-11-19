@@ -1,0 +1,60 @@
+{
+  "users": {
+    "admin@w2p.co.in": {
+      "id": "usr-admin-01",
+      "email": "admin@w2p.co.in",
+      "full_name": "Marcus Vance (Production Head)",
+      "role": "admin",
+      "company_name": "W2P Ltd",
+      "phone": "+44 800 555 0199",
+      "isActive": true,
+      "created_at": "2026-03-01T08:00:00.000Z",
+      "passwordHash": "admin123"
+    },
+    "sarah@enduroclub.uk": {
+      "id": "usr-cust-1",
+      "email": "sarah@enduroclub.uk",
+      "full_name": "Sarah Jenkins",
+      "role": "customer",
+      "company_name": "Grizedale Enduro Racing",
+      "phone": "+44 7911 123456",
+      "isActive": true,
+      "created_at": "2026-03-01T09:00:00.000Z",
+      "passwordHash": "customer123"
+    },
+    "customerb@example.com": {
+      "id": "usr-cust-2",
+      "email": "customerb@example.com",
+      "full_name": "Customer B",
+      "role": "customer",
+      "company_name": "Apex Biking Co",
+      "phone": "+44 7911 222333",
+      "isActive": true,
+      "created_at": "2026-03-02T10:00:00.000Z",
+      "passwordHash": "customer123"
+    },
+    "customerc@example.com": {
+      "id": "usr-cust-3",
+      "email": "customerc@example.com",
+      "full_name": "Customer C",
+      "role": "customer",
+      "company_name": "Lakeside Events",
+      "phone": "+44 7911 444555",
+      "isActive": true,
+      "created_at": "2026-03-02T11:00:00.000Z",
+      "passwordHash": "customer123"
+    },
+    "tenant.b@example.com": {
+      "id": "usr-cust-1795091414803",
+      "email": "tenant.b@example.com",
+      "full_name": "Tenant B",
+      "company_name": null,
+      "phone": null,
+      "role": "customer",
+      "isActive": true,
+      "created_at": "2026-11-19T12:30:14.803Z",
+      "passwordHash": "SecurePassword123!"
+    }
+  },
+  "sessions": {}
+}
