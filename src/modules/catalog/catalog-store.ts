@@ -1,4 +1,4 @@
-import { dataFile } from "@/lib/data-dir";
+import { dataFile } from "../../lib/data-dir";
 import fs from "fs";
 import { Product, PricingTier, Division } from "@/types/database";
 import { PRODUCTS, DIVISIONS, VOLUME_DISCOUNTS } from "@/lib/data/mock-data";

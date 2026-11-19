@@ -1,4 +1,4 @@
-import { dataFile } from "@/lib/data-dir";
+import { dataFile } from "../../lib/data-dir";
 import fs from "fs";
 import { Proof } from "@/types/database";
 import { getOrdersForUser } from "@/modules/orders/order-store";

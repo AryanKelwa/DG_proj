@@ -10,6 +10,9 @@ import path from "path";
  * isolated from local development data.
  *
  * NOTE: interim persistence only. Phase 1 replaces these stores with Supabase.
+ *
+ * Stores import this module by relative path (not "@/lib/...") so Playwright specs
+ * that load a store dynamically can still resolve it.
  */
 export function dataFile(fileName: string): string {
   const dir = process.env.W2P_DATA_DIR

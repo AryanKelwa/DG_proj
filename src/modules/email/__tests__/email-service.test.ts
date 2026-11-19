@@ -1,6 +1,6 @@
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
 
-import { dataFile } from "@/lib/data-dir";
+import { dataFile } from "../../../lib/data-dir";
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert";
 import fs from "fs";
