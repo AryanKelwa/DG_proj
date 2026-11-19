@@ -70,6 +70,8 @@ export interface SerializedCanvasState {
   timestamp: string;
   productSlug: string;
   dimensionsMm: PrintDimensions;
+  /** Designer stage scale when the design was saved (canvas px per mm, origin = bleed box corner). */
+  pxPerMm?: number;
   backgroundColor: string;
   elements: CanvasElement[];
 }

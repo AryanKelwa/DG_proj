@@ -4,6 +4,8 @@ import { JobDraft, DraftStatus, DraftAuditLogEntry, DraftProofRecord, DraftOptio
 import { DivisionSlug } from "@/types/database";
 import { calculatePrintPrice, PricingBreakdown, PricingValidationError, validateConfiguration } from "@/modules/pricing/pricing-engine";
 import { generateWatermarkedProofSvg } from "@/modules/proofs/proof-generator";
+import { renderDesignFragment, isCanvasState } from "@/modules/proofs/design-render";
+import { downloadFile, uploadFile, resolveStoredUrl, STORAGE_PREFIX } from "@/lib/storage";
 import { ExtendedProduct, getProductById } from "@/modules/catalog/catalog-store";
 
 /**
@@ -304,7 +306,14 @@ export async function transitionDraftStatus(
   return (await getDraft(draftId))!;
 }
 
-/** Renders the stored, hashed proof for a draft version (§ 06, § 08). */
+/**
+ * Renders, stores and fingerprints the proof for a draft version (§ 06, § 08).
+ *
+ * The SVG shows the customer's actual artwork (designer canvas, or uploaded PNG/SVG);
+ * PDF/AI/EPS uploads get a labelled placeholder because they are checked by
+ * pre-press. The SHA-256 covers the rendered proof, the job configuration and the
+ * uploaded file bytes, so the approval log identifies exactly what was approved.
+ */
 export async function generateDraftProof(
   draft: JobDraft,
   version?: number,
@@ -315,21 +324,58 @@ export async function generateDraftProof(
   const material =
     product?.allowed_materials.find((m) => m.id === draft.options.materialId) ?? product?.allowed_materials[0];
 
-  const svg = generateWatermarkedProofSvg({
-    version: currentVersion,
-    widthMm: draft.options.widthMm,
-    heightMm: draft.options.heightMm,
-    materialName: material?.name ?? draft.options.materialId,
-    bleedMm: draft.options.bleedMm,
-    orderNumber: draft.id,
-    createdAt: new Date().toISOString(),
-  });
+  const { widthMm, heightMm, bleedMm } = draft.options;
+  let artworkFragment: string | undefined;
+  let placeholder: string | undefined;
+  let uploadHash = "";
+
+  if (draft.uploadedFileRef) {
+    const meta = (draft.designJson ?? {}) as { kind?: string; fileName?: string; contentType?: string };
+    const bytes = await downloadFile("artwork", draft.uploadedFileRef);
+    uploadHash = crypto.createHash("sha256").update(bytes).digest("hex");
+    if (meta.kind === "png" || meta.kind === "svg") {
+      const href = `data:${meta.contentType};base64,${bytes.toString("base64")}`;
+      artworkFragment = `<image x="0" y="0" width="${widthMm + 2 * bleedMm}" height="${heightMm + 2 * bleedMm}" preserveAspectRatio="xMidYMid meet" href="${href}"/>`;
+    } else {
+      placeholder = `${(meta.kind || "file").toUpperCase()} artwork: ${meta.fileName || "uploaded file"} (checked by pre-press)`;
+    }
+  } else if (isCanvasState(draft.designJson)) {
+    artworkFragment = renderDesignFragment(draft.designJson);
+  } else {
+    placeholder = "No artwork yet";
+  }
+
+  const createdAt = new Date().toISOString();
+  const svg = generateWatermarkedProofSvg(
+    {
+      version: currentVersion,
+      widthMm,
+      heightMm,
+      bleedMm,
+      materialName: material?.name ?? draft.options.materialId,
+      productName: product?.name,
+      orderNumber: draft.id,
+      createdAt,
+    },
+    artworkFragment,
+    placeholder
+  );
+
+  const fingerprint = crypto
+    .createHash("sha256")
+    .update(svg)
+    .update(JSON.stringify({ product: draft.productId, options: draft.options, quantity: draft.quantity }))
+    .update(uploadHash)
+    .digest("hex");
+
+  const path = `drafts/${draft.id}/v${currentVersion}-${fingerprint.slice(0, 12)}.svg`;
+  await uploadFile("proofs", path, Buffer.from(svg, "utf8"), "image/svg+xml");
 
   return {
     version: currentVersion,
-    renderedUrl: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
-    sha256Hash: crypto.createHash("sha256").update(svg).digest("hex"),
-    createdAt: new Date().toISOString(),
+    renderedUrl: `${STORAGE_PREFIX}proofs/${path}`,
+    sha256Hash: fingerprint,
+    createdAt,
   };
 }
 
@@ -437,4 +483,12 @@ export async function calculateDraftPrice(draft: JobDraft, placeOfSupply?: strin
     quantity: draft.quantity,
     placeOfSupply,
   });
+}
+
+/** API view of a draft: stored proof references become short-lived URLs. */
+export async function presentDraft(draft: JobDraft): Promise<JobDraft> {
+  const proofs = await Promise.all(
+    draft.proofs.map(async (p) => ({ ...p, renderedUrl: await resolveStoredUrl(p.renderedUrl) }))
+  );
+  return { ...draft, proofs };
 }

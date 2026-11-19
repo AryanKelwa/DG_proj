@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { approveDraftProof, calculateDraftPrice, getDraft } from "@/modules/drafts/draft-store";
+import { approveDraftProof, calculateDraftPrice, getDraft, presentDraft } from "@/modules/drafts/draft-store";
 import { safeSendNotificationEmail } from "@/modules/email/email-service";
 import { authorizeDraft } from "@/lib/draft-access";
 
@@ -40,7 +40,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      draft: updatedDraft,
+      draft: await presentDraft(updatedDraft),
       pricing,
       message: `Proof v${updatedDraft.proofVersion} approved. Ready for checkout.`,
     });

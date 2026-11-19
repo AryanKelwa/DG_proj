@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { attachDraftToUser, getDraft } from "@/modules/drafts/draft-store";
+import { attachDraftToUser, getDraft, presentDraft } from "@/modules/drafts/draft-store";
 import { getAuthUser } from "@/lib/server-auth";
 import { authorizeDraft } from "@/lib/draft-access";
 
@@ -25,7 +25,7 @@ export async function POST(
     }
 
     if (draft.customerId === user.id) {
-      return NextResponse.json({ success: true, draft });
+      return NextResponse.json({ success: true, draft: await presentDraft(draft) });
     }
     if (draft.customerId) {
       return NextResponse.json({ error: "Forbidden: this job belongs to another account." }, { status: 403 });
@@ -35,7 +35,7 @@ export async function POST(
     if (!access.ok) return access.response;
 
     const updatedDraft = await attachDraftToUser(id, user.id, user.email);
-    return NextResponse.json({ success: true, draft: updatedDraft });
+    return NextResponse.json({ success: true, draft: await presentDraft(updatedDraft) });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to attach draft to user";
     return NextResponse.json({ error: errorMsg }, { status: 400 });

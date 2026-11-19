@@ -1,96 +1,82 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkApprovalGate } from "@/modules/proofs/proof-generator";
+import { z } from "zod";
 import { safeSendNotificationEmail } from "@/modules/email/email-service";
 import { getAuthUser } from "@/lib/server-auth";
 import { getOrderById, updateOrderStageWithVersion } from "@/modules/orders/order-store";
-import { getProofById, updateProof } from "@/modules/proofs/proofs-store";
-import { z } from "zod";
+import { getProofById, getLatestProofForDraft, updateProof } from "@/modules/proofs/proofs-store";
 
 const RejectProofSchema = z.object({
-  feedback: z.string().min(3),
-  orderId: z.string(),
+  feedback: z.string().trim().min(3).max(2000),
+  orderId: z.string().min(1),
   currentVersion: z.number().int().positive(),
 });
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/**
+ * Customer requests changes to a revised proof on a paid order. The proof is
+ * marked changes_requested and the order goes back to ARTWORK for pre-press,
+ * who then issue the next version. Production stays locked.
+ */
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await params;
-    const body = await req.json();
-    const validated = RejectProofSchema.safeParse(body);
-
-    if (!validated.success) {
-      return NextResponse.json(
-        { error: "Invalid change request payload", details: validated.error.format() },
-        { status: 400 }
-      );
-    }
-
     const sessionUser = await getAuthUser(req);
     if (!sessionUser) {
       return NextResponse.json({ error: "Unauthorized: Valid session required" }, { status: 401 });
     }
-    const { feedback, orderId, currentVersion } = validated.data;
-    const order = await getOrderById(orderId);
 
-    if (!order) {
-      return NextResponse.json({ error: `Order ${orderId} not found` }, { status: 404 });
+    const { id } = await params;
+    const validated = RejectProofSchema.safeParse(await req.json().catch(() => null));
+    if (!validated.success) {
+      return NextResponse.json({ error: "Invalid change request payload", details: validated.error.format() }, { status: 400 });
     }
 
-    // The proof must exist, belong to this order, and be owned by the caller (or the caller is an admin).
+    const order = await getOrderById(validated.data.orderId);
     const proof = await getProofById(id);
-    if (!proof || proof.order_id !== order.order_number) {
+    if (!order || !proof || proof.order_id !== order.order_number || !order.draft_id) {
       return NextResponse.json({ error: "Proof not found for this order" }, { status: 404 });
     }
-    if (sessionUser.role !== "admin" && proof.customer_id !== sessionUser.id) {
-        return NextResponse.json(
-          { error: "Forbidden: You do not own this order's proof" },
-          { status: 403 }
-        );
+    if (sessionUser.role !== "admin" && order.customer_id !== sessionUser.id) {
+      return NextResponse.json({ error: "Forbidden: You do not own this order's proof" }, { status: 403 });
+    }
+    if (order.pipeline_stage !== "PROOF") {
+      return NextResponse.json({ error: `This order is not awaiting proof review (stage: ${order.pipeline_stage}).` }, { status: 409 });
+    }
+    const latest = await getLatestProofForDraft(order.draft_id);
+    if (!latest || latest.id !== proof.id || proof.status !== "pending_review") {
+      return NextResponse.json({ error: "Changes can only be requested on the latest proof awaiting review." }, { status: 409 });
     }
 
-    const nextVersion = currentVersion + 1;
-    const effectiveEmail = sessionUser.email;
-    const effectiveName = sessionUser.full_name || order.customer_name || "Valued Customer";
+    const { feedback } = validated.data;
+    await updateProof(id, { status: "changes_requested", customer_feedback: feedback });
 
-    const gateResult = checkApprovalGate("changes_requested");
-
-    // Update proof record in store
-    await updateProof(id, {
-      status: "changes_requested",
-      customer_feedback: feedback,
-    });
-
-    await updateOrderStageWithVersion(
-      orderId,
+    const moved = await updateOrderStageWithVersion(
+      order.order_number,
+      "ARTWORK",
       "PROOF",
-      undefined,
-      effectiveEmail,
-      `Customer requested changes: ${feedback}`
+      sessionUser.email,
+      `Customer requested changes to proof v${proof.version_number}: ${feedback}`
     );
+    if (!moved.success) {
+      return NextResponse.json({ error: moved.error || "Could not update the order." }, { status: moved.conflict ? 409 : 400 });
+    }
 
-    // PRD § 13: Dispatch change_requested email notification
     await safeSendNotificationEmail({
-      to: effectiveEmail,
-      recipientName: effectiveName,
+      to: order.customer_email || sessionUser.email,
+      recipientName: order.customer_name || "Customer",
       event: "change_requested",
-      orderId,
-      orderNumber: orderId,
-      version: currentVersion,
+      orderId: order.id,
+      orderNumber: order.order_number,
+      version: proof.version_number,
       feedback,
     });
 
     return NextResponse.json({
       success: true,
       proofId: id,
-      orderId,
+      orderId: order.order_number,
       status: "changes_requested",
       feedback,
-      nextVersion,
-      approvalGate: gateResult,
-      message: `Revision request for order ${orderId} logged. Staff notified to produce proof v${nextVersion}. Production files remain LOCKED.`,
+      nextVersion: proof.version_number + 1,
+      message: `Change request logged. Pre-press will issue proof v${proof.version_number + 1}. Production stays locked.`,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Revision processing error";

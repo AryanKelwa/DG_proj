@@ -227,6 +227,7 @@ export function DesignerPageView({
       timestamp: new Date().toISOString(),
       productSlug: product.slug,
       dimensionsMm: dimensions,
+      pxPerMm: bounds.scaleFactor,
       backgroundColor,
       elements,
     };

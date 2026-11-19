@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createDraft, calculateDraftPrice } from "@/modules/drafts/draft-store";
+import { createDraft, calculateDraftPrice, presentDraft } from "@/modules/drafts/draft-store";
 import { getAuthUser } from "@/lib/server-auth";
 import { ensureGuestToken, hashGuestToken } from "@/lib/draft-access";
 import { PricingValidationError } from "@/modules/pricing/pricing-engine";
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     });
     const pricing = await calculateDraftPrice(draft);
 
-    return NextResponse.json({ draft, pricing }, { status: 201, headers: response.headers });
+    return NextResponse.json({ draft: await presentDraft(draft), pricing }, { status: 201, headers: response.headers });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to create draft";
     const status = err instanceof PricingValidationError ? 422 : /not found/i.test(message) ? 404 : 500;

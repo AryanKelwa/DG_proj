@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requestDraftProofChanges, calculateDraftPrice, getDraft } from "@/modules/drafts/draft-store";
+import { requestDraftProofChanges, calculateDraftPrice, getDraft, presentDraft } from "@/modules/drafts/draft-store";
 import { safeSendNotificationEmail } from "@/modules/email/email-service";
 import { authorizeDraft } from "@/lib/draft-access";
 
@@ -57,7 +57,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      draft: updatedDraft,
+      draft: await presentDraft(updatedDraft),
       pricing,
       message: `Changes requested. Revision v${updatedDraft.proofVersion} is ready for review.`,
     });

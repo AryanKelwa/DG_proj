@@ -75,3 +75,21 @@ export async function updateProof(
   unwrap(await db().from("draft_proofs").update(columns).eq("id", id), "Update proof");
   return getProofById(id);
 }
+
+/** Latest proof version for a draft, or null. */
+export async function getLatestProofForDraft(draftId: string): Promise<(Proof & { sha256: string }) | null> {
+  if (!UUID_RE.test(draftId)) return null;
+  const row = unwrap(
+    await db().from("draft_proofs").select(`${PROOF_COLUMNS}, sha256`).eq("draft_id", draftId).order("version", { ascending: false }).limit(1).maybeSingle(),
+    "Load latest proof"
+  ) as (ProofRow & { sha256: string }) | null;
+  return row ? { ...toProof(row), sha256: row.sha256 } : null;
+}
+
+/** Marks every earlier version of a draft's proofs as superseded. */
+export async function supersedeEarlierProofs(draftId: string, latestVersion: number): Promise<void> {
+  unwrap(
+    await db().from("draft_proofs").update({ status: "superseded" }).eq("draft_id", draftId).lt("version", latestVersion).neq("status", "approved"),
+    "Supersede proofs"
+  );
+}

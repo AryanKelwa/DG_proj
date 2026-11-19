@@ -10,6 +10,9 @@ import { db } from "@/lib/supabase/server";
  */
 export type Bucket = "artwork" | "proofs" | "production";
 
+/** Marks a stored reference ("storage:<bucket>/<path>") in database columns. */
+export const STORAGE_PREFIX = "storage:";
+
 const BUCKET_LIMITS: Record<Bucket, number> = {
   artwork: 50 * 1024 * 1024,
   proofs: 20 * 1024 * 1024,
@@ -62,4 +65,20 @@ export async function signedUploadUrl(bucket: Bucket, path: string): Promise<{ s
   const { data, error } = await db().storage.from(bucket).createSignedUploadUrl(path);
   if (error || !data) throw new Error(`Sign upload ${bucket}/${path}: ${error?.message}`);
   return { signedUrl: data.signedUrl, token: data.token, path: data.path };
+}
+
+/**
+ * Turns a stored reference into a short-lived URL the browser can load; other
+ * values (data: URLs, legacy absolute URLs) are returned unchanged.
+ */
+export async function resolveStoredUrl(value: string | null | undefined, expiresInSeconds = 600): Promise<string> {
+  if (!value || !value.startsWith(STORAGE_PREFIX)) return value ?? "";
+  const ref = value.slice(STORAGE_PREFIX.length);
+  const slash = ref.indexOf("/");
+  const bucket = ref.slice(0, slash) as Bucket;
+  try {
+    return await signedDownloadUrl(bucket, ref.slice(slash + 1), expiresInSeconds);
+  } catch {
+    return "";
+  }
 }

@@ -591,3 +591,11 @@ export async function getArchivedOrders(options: {
 }) {
   return searchAdminOrders({ ...options, stage: "COMPLETED", limit: 100 });
 }
+
+/** Records which proof version (and fingerprint) the customer approved for this order. */
+export async function setOrderApprovedProof(orderId: string, version: number, sha256: string): Promise<void> {
+  unwrap(
+    await db().from("orders").update({ approved_proof_version: version, approved_proof_sha256: sha256 }).eq("id", orderId),
+    "Record approved proof"
+  );
+}

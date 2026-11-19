@@ -1,3 +1,4 @@
+import { resolveStoredUrl } from "@/lib/storage";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/server-auth";
 import { getProofById } from "@/modules/proofs/proofs-store";
@@ -32,7 +33,7 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({ proof });
+    return NextResponse.json({ proof: { ...proof, watermarked_preview_url: await resolveStoredUrl(proof.watermarked_preview_url) } });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to load proof";
     return NextResponse.json({ error: errorMsg }, { status: 500 });

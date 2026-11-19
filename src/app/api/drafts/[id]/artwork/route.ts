@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getDraft, updateDraft, transitionDraftStatus } from "@/modules/drafts/draft-store";
+import { getDraft, updateDraft, transitionDraftStatus, presentDraft } from "@/modules/drafts/draft-store";
 import { authorizeDraft } from "@/lib/draft-access";
 import { signedUploadUrl, downloadFile, deleteFile } from "@/lib/storage";
 import { precheckArtwork, inspectArtwork, fileExtension } from "@/modules/designer/artwork-validation";
@@ -102,5 +102,5 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     "ARTWORK_UPLOADED"
   );
 
-  return NextResponse.json({ draft: updated, kind: check.kind, warnings: check.warnings, effectiveDpi: check.effectiveDpi });
+  return NextResponse.json({ draft: await presentDraft(updated), kind: check.kind, warnings: check.warnings, effectiveDpi: check.effectiveDpi });
 }

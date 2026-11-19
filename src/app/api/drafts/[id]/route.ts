@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getDraft, updateDraft, calculateDraftPrice, transitionDraftStatus } from "@/modules/drafts/draft-store";
+import { getDraft, updateDraft, calculateDraftPrice, transitionDraftStatus, presentDraft } from "@/modules/drafts/draft-store";
 import { authorizeDraft } from "@/lib/draft-access";
 import { DraftStatus } from "@/types/draft";
 import { getAllDivisions, getProductById } from "@/modules/catalog/catalog-store";
@@ -27,7 +27,7 @@ export async function GET(
     ]);
     const division = divisions.find((d) => d.id === product?.division_id) ?? null;
 
-    return NextResponse.json({ draft, pricing, product, division });
+    return NextResponse.json({ draft: await presentDraft(draft), pricing, product, division });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to load draft";
     return NextResponse.json({ error: errorMsg }, { status: 500 });
@@ -102,7 +102,7 @@ export async function PATCH(
     );
     const pricing = await calculateDraftPrice(updated);
 
-    return NextResponse.json({ draft: updated, pricing });
+    return NextResponse.json({ draft: await presentDraft(updated), pricing });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to update draft";
     return NextResponse.json({ error: errorMsg }, { status: 400 });
