@@ -8,8 +8,10 @@
 export interface FileNamingParams {
   orderId: string;
   productType: string;
-  extension?: "pdf" | "png" | "zip";
+  extension?: "pdf" | "png" | "zip" | "csv" | "svg" | "ai" | "eps";
   date?: Date;
+  /** Last segment of the name; defaults to "Output" (e.g. "Output", "Row0001", "Original"). */
+  outputLabel?: string;
 }
 
 export function sanitizeSlug(str: string): string {
@@ -17,7 +19,7 @@ export function sanitizeSlug(str: string): string {
 }
 
 export function generateStandardPrintFileName(params: FileNamingParams): string {
-  const { orderId, productType, extension = "pdf", date = new Date() } = params;
+  const { orderId, productType, extension = "pdf", date = new Date(), outputLabel = "Output" } = params;
 
   // Format date as YYYYMMDD
   const dateStr = date.toISOString().slice(0, 10).replace(/-/g, "");
@@ -25,7 +27,7 @@ export function generateStandardPrintFileName(params: FileNamingParams): string 
   const cleanOrderId = sanitizeSlug(orderId);
   const cleanProductType = sanitizeSlug(productType);
 
-  return `${cleanOrderId}_${cleanProductType}_${dateStr}_Output.${extension}`;
+  return `${cleanOrderId}_${cleanProductType}_${dateStr}_${sanitizeSlug(outputLabel) || "Output"}.${extension}`;
 }
 
 export function generateStandardOrderDirectory(orderId: string): string {
