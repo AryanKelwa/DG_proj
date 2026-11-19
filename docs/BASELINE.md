@@ -1,4 +1,30 @@
-# Phase 0 Baseline — Debugging & Testing Programme
+# Test status — Debugging & Testing Programme
+
+## Final status (after Phases 1–10 and the UI redesign)
+
+| Check | Result |
+|---|---|
+| `npm run typecheck`, `npm run lint` | ✅ clean |
+| `npm test` (unit) | ✅ 57 / 57 |
+| `npm run test:integration` (against Supabase) | ✅ 29 / 29 |
+| `next build` | ✅ compiles |
+| Playwright desktop + tablet + mobile | ✅ 170 passed, 34 skipped (API-only specs run on desktop only), 0 failed |
+
+All twelve audit defects A1–A10 are covered by `e2e/security-regressions.spec.ts` and pass.
+The money path (approval gate → Stripe Checkout → signed webhook → GST → revised proof → production files)
+is covered by `e2e/checkout-proofs-production.spec.ts`.
+
+Bugs found by the test phase and fixed: role-based login redirect, Stripe client behind proxies,
+design save racing client auth state, production bucket size limit, sign-in rate-limit message,
+admin payment filter value, mobile overflow (page containers in the flex `<main>`), small-screen
+navigation and dashboard tabs.
+
+Run locally: `npm run seed`, then `npm run test:e2e:all` (needs `.env.local`; behind a proxy set
+`NODE_USE_ENV_PROXY=1`). Test sign-ins are cached per run because Supabase rate-limits password sign-ins.
+
+---
+
+# Phase 0 Baseline (historical)
 
 Snapshot of the codebase **before any functional fix**, taken on branch `fix/phase-0-baseline`.
 Every later phase must keep this list shrinking and must never turn a passing test red.

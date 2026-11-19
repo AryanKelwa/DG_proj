@@ -50,7 +50,7 @@ test.describe("W1. Visitor Journey (PRD §03, §04, §12)", () => {
     await expect(page.locator("text=Race & Event Numbers").first()).toBeVisible();
 
     // Verify gallery cards are rendered
-    const galleryCards = page.locator(".rounded-lg.border, .border.bg-card");
+    const galleryCards = page.getByTestId("gallery-card");
     await expect(galleryCards.first()).toBeVisible();
   });
 

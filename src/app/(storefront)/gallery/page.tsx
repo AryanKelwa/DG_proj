@@ -53,7 +53,7 @@ export default async function GalleryPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {divisionProducts.map((prod) => (
-                <Card key={prod.id} className="overflow-hidden group hover:border-brand-500 transition-colors">
+                <Card key={prod.id} className="overflow-hidden group hover-lift" data-testid="gallery-card">
                   <div className="aspect-[4/3] w-full overflow-hidden relative bg-muted">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
