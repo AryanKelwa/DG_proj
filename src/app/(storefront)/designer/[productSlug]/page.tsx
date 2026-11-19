@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { DesignerPageView } from "@/modules/designer/components/designer-page-view";
 import { getDraft, getDraftGuestTokenHash } from "@/modules/drafts/draft-store";
 import { getPageUser, getPageGuestToken } from "@/lib/server-auth";
+import { getSavedDesignById } from "@/modules/designs/saved-designs-store";
 import { hashGuestToken } from "@/lib/draft-access";
 import { validateConfiguration } from "@/modules/pricing/pricing-engine";
 import { getProductBySlug } from "@/modules/catalog/catalog-store";
@@ -15,7 +16,7 @@ export default async function DesignerPage({
   searchParams,
 }: {
   params: Promise<{ productSlug: string }>;
-  searchParams: Promise<{ draft?: string; w?: string; h?: string; mat?: string; qty?: string }>;
+  searchParams: Promise<{ draft?: string; design?: string; w?: string; h?: string; mat?: string; qty?: string }>;
 }) {
   const { productSlug } = await params;
   const sParams = await searchParams;
@@ -33,6 +34,16 @@ export default async function DesignerPage({
       ? user?.id === draft.customerId || user?.role === "admin"
       : Boolean(guestToken) && hashGuestToken(guestToken!) === (await getDraftGuestTokenHash(draft.id));
     if (!ownsDraft || draft.productId !== product.id) draft = null;
+  }
+
+  // A saved design from the customer's library seeds a new job (size, material, artwork).
+  const savedDesign =
+    !draft && sParams.design && user ? await getSavedDesignById(sParams.design) : null;
+  const design = savedDesign && savedDesign.customer_id === user?.id && savedDesign.product_id === product.id ? savedDesign : null;
+  if (design) {
+    sParams.w = String(design.width_mm);
+    sParams.h = String(design.height_mm);
+    sParams.mat = design.material;
   }
 
   // No draft is created just by viewing the designer: the client creates one the
@@ -59,7 +70,7 @@ export default async function DesignerPage({
       <DesignerPageView
         product={product}
         draftId={draft?.id}
-        initialDesign={draft?.designJson ?? null}
+        initialDesign={draft?.designJson ?? design?.canvas_state ?? null}
         initialWidthMm={config.widthMm}
         initialHeightMm={config.heightMm}
         selectedMaterialId={config.materialId}

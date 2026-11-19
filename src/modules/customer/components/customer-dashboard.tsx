@@ -23,6 +23,8 @@ import {
   Phone,
 } from "lucide-react";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function CustomerDashboardView() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -30,7 +32,6 @@ export function CustomerDashboardView() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [proofs, setProofs] = useState<Proof[]>([]);
   const [savedDesigns, setSavedDesigns] = useState<SavedDesign[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(Phase 8): loading state is never shown to the user
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
   const [reorderSuccess, setReorderSuccess] = useState<string | null>(null);
   const [checkoutSuccessOrder, setCheckoutSuccessOrder] = useState<string | null>(null);
@@ -98,29 +99,21 @@ export function CustomerDashboardView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per return from Stripe
   }, [searchParams, user]);
 
-  // Handle 1-click reorder (§ 09, § 10)
-  // TODO(Phase 8, bug B18): the order argument is ignored; every reorder recreates a hardcoded 75x75mm vinyl x100 job.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // One-click reorder (§ 09, § 10): the server copies the approved artwork into a
+  // new job that already carries the approved proof, then we go straight to checkout.
+  const [reorderError, setReorderError] = useState<string | null>(null);
+  const [reorderingOrder, setReorderingOrder] = useState<string | null>(null);
   const handleReorder = async (order: Order) => {
+    setReorderError(null);
+    setReorderingOrder(order.order_number);
     try {
-      const res = await fetch("/api/drafts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: "custom-die-cut-vinyl",
-          widthMm: 75,
-          heightMm: 75,
-          materialId: "gloss-white",
-          quantity: 100,
-          customerId: user?.id || null,
-          customerEmail: user?.email || null,
-        }),
-      });
+      const res = await fetch(`/api/orders/${order.order_number}/reorder`, { method: "POST" });
       const data = await res.json();
-      const draftId = data.draft.id;
-      router.push(`/designer/${data.draft.productSlug}?draft=${draftId}`);
+      if (!res.ok) throw new Error(data.error || "Reorder failed");
+      router.push(data.checkoutUrl);
     } catch (err) {
-      console.error("Reorder creation error:", err);
+      setReorderError(err instanceof Error ? err.message : "Reorder failed");
+      setReorderingOrder(null);
     }
   };
 
@@ -130,15 +123,15 @@ export function CustomerDashboardView() {
     if (!targetProof) return;
 
     try {
-      const res = await fetch(`/api/proofs/${proofId}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: targetProof.order_id,
-          version: targetProof.version_number,
-          approvedBy: user?.email,
-        }),
-      });
+      // Proofs of unpaid jobs are approved on the job draft; revised proofs of paid orders on the order.
+      const isDraftProof = UUID_PATTERN.test(targetProof.order_id);
+      const res = isDraftProof
+        ? await fetch(`/api/drafts/${targetProof.order_id}/approve-proof`, { method: "POST" })
+        : await fetch(`/api/proofs/${proofId}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId: targetProof.order_id, version: targetProof.version_number }),
+          });
 
       if (res.ok) {
         setProofs((prev) =>
@@ -165,16 +158,18 @@ export function CustomerDashboardView() {
     if (!targetProof) return;
 
     try {
-      const res = await fetch(`/api/proofs/${proofId}/reject`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: targetProof.order_id,
-          currentVersion: targetProof.version_number,
-          feedback,
-          customerEmail: user?.email,
-        }),
-      });
+      const isDraftProof = UUID_PATTERN.test(targetProof.order_id);
+      const res = isDraftProof
+        ? await fetch(`/api/drafts/${targetProof.order_id}/request-changes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ feedback }),
+          })
+        : await fetch(`/api/proofs/${proofId}/reject`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId: targetProof.order_id, currentVersion: targetProof.version_number, feedback }),
+          });
 
       if (res.ok) {
         setProofs((prev) =>
@@ -290,6 +285,19 @@ export function CustomerDashboardView() {
         <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           <span>{reorderSuccess}</span>
+        </div>
+      )}
+
+      {reorderError && (
+        <div role="alert" className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">
+          {reorderError}
+        </div>
+      )}
+
+      {isLoadingData && (
+        <div role="status" className="text-sm text-muted-foreground flex items-center gap-2" data-testid="dashboard-loading">
+          <span className="w-3 h-3 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" aria-hidden="true" />
+          Loading your orders, proofs and designs…
         </div>
       )}
 
@@ -417,14 +425,18 @@ export function CustomerDashboardView() {
                         </Button>
 
                         {/* 1-Click Reorder (§ 10 Module 5) */}
-                        <Button
-                          size="sm"
-                          onClick={() => handleReorder(ord)}
-                          className="font-semibold text-xs shadow-sm bg-brand-500 hover:bg-brand-600"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-                          1-Click Reorder
-                        </Button>
+                        {ord.payment_status === "paid" && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleReorder(ord)}
+                            disabled={reorderingOrder !== null}
+                            className="font-semibold text-xs shadow-sm bg-brand-500 hover:bg-brand-600"
+                            data-testid="reorder-button"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                            {reorderingOrder === ord.order_number ? "Preparing…" : "1-Click Reorder"}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -587,7 +599,7 @@ export function CustomerDashboardView() {
                     <div className="pt-3 border-t flex gap-2">
                       <Button
                         size="sm"
-                        onClick={() => router.push(`/designer/${des.product_id}`)}
+                        onClick={() => router.push(`/designer/${(des as SavedDesign & { product_slug?: string }).product_slug || des.product_id}?design=${des.id}`)}
                         className="w-full text-xs font-semibold"
                       >
                         Open in Designer
