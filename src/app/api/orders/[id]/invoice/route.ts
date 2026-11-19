@@ -9,7 +9,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
 
     if (!sessionUser) {
       return NextResponse.json(
@@ -18,7 +18,7 @@ export async function GET(
       );
     }
 
-    const order = getOrderById(id);
+    const order = await getOrderById(id);
     if (!order) {
       return NextResponse.json({ error: `Order ${id} not found` }, { status: 404 });
     }
@@ -26,8 +26,7 @@ export async function GET(
     // Strict Customer Tenant Isolation (PRD § 03, § 10)
     if (sessionUser.role !== "admin") {
       const isOwner =
-        order.customer_id === sessionUser.id ||
-        order.customer_email?.toLowerCase() === sessionUser.email.toLowerCase();
+        order.customer_id === sessionUser.id;
       if (!isOwner) {
         return NextResponse.json(
           { error: "Forbidden: You do not have permission to download this invoice" },

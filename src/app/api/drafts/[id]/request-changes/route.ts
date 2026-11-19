@@ -16,8 +16,8 @@ export async function POST(
       email: body.actorEmail || "customer@w2p.co.uk",
     };
 
-    const updatedDraft = requestDraftProofChanges(id, feedback, actor);
-    const pricing = calculateDraftPrice(updatedDraft);
+    const updatedDraft = await requestDraftProofChanges(id, feedback, actor);
+    const pricing = await calculateDraftPrice(updatedDraft);
 
     // PRD § 13: Customer notifications (change_requested & proof_ready for new revision)
     await safeSendNotificationEmail({

@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revokeSessionToken } from "@/modules/auth/users-store";
-import { getSessionTokenFromRequest } from "@/lib/server-auth";
+import { authClientForRoute } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest) {
-  try {
-    const token = getSessionTokenFromRequest(req);
-    if (token) {
-      revokeSessionToken(token);
-    }
-
-    const response = NextResponse.json({ success: true, message: "Logged out successfully" });
-    response.cookies.delete("w2p_session");
-    return response;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Logout error";
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+  const response = NextResponse.json({ success: true, message: "Logged out successfully" });
+  const supabase = authClientForRoute(req, response);
+  // Revokes the refresh token server-side and clears the auth cookies on the response.
+  await supabase.auth.signOut().catch(() => undefined);
+  return response;
 }

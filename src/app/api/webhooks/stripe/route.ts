@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { generateXeroInvoicePayload } from "@/modules/orders/xero-generator";
 import { transitionDraftStatus, getDraft } from "@/modules/drafts/draft-store";
-import { createOrder } from "@/modules/orders/order-store";
+import { createOrder, reserveOrderNumber } from "@/modules/orders/order-store";
 import { Order } from "@/types/database";
 import { safeSendNotificationEmail } from "@/modules/email/email-service";
 
@@ -28,14 +28,19 @@ export async function POST(req: NextRequest) {
       const session = event.data.object as Stripe.Checkout.Session;
       const metadata = session.metadata || {};
 
-      const orderNumber = metadata.orderNumber || `W2P-2026-00${Math.floor(100 + Math.random() * 900)}`;
       const draftId = metadata.draftId || session.client_reference_id;
+      const draftForOrder = draftId ? await getDraft(draftId) : null;
+      const customerId = metadata.customerId || draftForOrder?.customerId;
+      if (!customerId) {
+        return NextResponse.json({ error: "Checkout session is not linked to a customer account." }, { status: 400 });
+      }
+      const orderNumber = metadata.orderNumber || (await reserveOrderNumber());
 
       if (draftId) {
         try {
-          const draft = getDraft(draftId);
+          const draft = await getDraft(draftId);
           if (draft && draft.status !== "paid") {
-            transitionDraftStatus(
+            await transitionDraftStatus(
               draftId,
               "paid",
               { id: draft.customerId || "stripe_webhook", email: session.customer_details?.email || "customer@w2p.co.uk" },
@@ -72,9 +77,10 @@ export async function POST(req: NextRequest) {
 
       // Construct verified order model
       const completedOrder: Order = {
-        id: `ord-${Date.now()}`,
+        id: "",
         order_number: orderNumber,
-        customer_id: session.customer ? String(session.customer) : "usr-cust-01",
+        customer_id: customerId,
+        draft_id: draftId || undefined,
         customer_email: session.customer_details?.email || "customer@example.com",
         customer_name: session.customer_details?.name || "Valued Customer",
         pipeline_stage: "ORDER",
@@ -82,7 +88,7 @@ export async function POST(req: NextRequest) {
         subtotal_cents: Number(metadata.subtotalCents) || 12000,
         tax_cents: Number(metadata.taxCents) || 2400,
         total_cents: Number(metadata.totalCents) || 14400,
-        currency: "GBP",
+        currency: "INR",
         shipping_address: shippingAddressSnapshot,
         stripe_session_id: session.id,
         created_at: new Date().toISOString(),
@@ -94,7 +100,7 @@ export async function POST(req: NextRequest) {
       completedOrder.xero_invoice_data = xeroInvoice as any;
 
       // Issue 3: Persist to database/order-store with strict idempotency (PRD § 05, § 09)
-      const { order: savedOrder, isNew } = createOrder(completedOrder);
+      const { order: savedOrder, isNew } = await createOrder(completedOrder);
 
       // PRD § 13: Order confirmed email notification (exact-once, idempotent, resilient)
       await safeSendNotificationEmail({

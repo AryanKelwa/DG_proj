@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DIVISIONS, PRODUCTS } from "@/lib/data/mock-data";
+import { getAllDivisions, getAllProducts } from "@/modules/catalog/catalog-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +12,11 @@ import {
   Cpu,
 } from "lucide-react";
 
-export default function HomePage() {
+// Catalogue pages are cached and refreshed at most once a minute.
+export const revalidate = 60;
+
+export default async function HomePage() {
+  const [DIVISIONS, PRODUCTS] = await Promise.all([getAllDivisions(), getAllProducts()]);
   return (
     <div className="flex flex-col gap-16 md:gap-24 pb-16">
       {/* HERO SECTION */}

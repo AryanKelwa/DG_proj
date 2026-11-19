@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/server-auth";
 import { searchAdminOrders } from "@/modules/orders/order-store";
 
 export async function GET(req: NextRequest) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1", 10);
     const limit = parseInt(searchParams.get("limit") || "20", 10);
 
-    const result = searchAdminOrders({
+    const result = await searchAdminOrders({
       query,
       stage,
       payment_status,

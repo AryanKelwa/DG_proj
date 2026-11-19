@@ -11,7 +11,7 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const token = searchParams.get("token");
 
-    const order = getOrderById(id);
+    const order = await getOrderById(id);
     if (!order) {
       return NextResponse.json({ error: `Order '${id}' not found` }, { status: 404 });
     }

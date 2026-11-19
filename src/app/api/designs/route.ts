@@ -5,7 +5,7 @@ import { SavedDesign } from "@/types/database";
 
 export async function GET(req: NextRequest) {
   try {
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
     if (!sessionUser) {
       return NextResponse.json(
         { error: "Unauthorized: Valid session required to view saved designs" },
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const designs = getSavedDesignsForUser(sessionUser.id, sessionUser.role);
+    const designs = await getSavedDesignsForUser(sessionUser.id, sessionUser.role);
     return NextResponse.json({ designs });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to retrieve saved designs";
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
     if (!sessionUser) {
       return NextResponse.json(
         { error: "Unauthorized: Valid session required to save a design" },
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    const saved = saveDesign(newDesign);
+    const saved = await saveDesign(newDesign);
     return NextResponse.json({ design: saved }, { status: 201 });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to save design";

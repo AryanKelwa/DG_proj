@@ -19,8 +19,8 @@ export async function POST(
       // Body is optional if session header/context is used
     }
 
-    const updatedDraft = approveDraftProof(id, { id: actorId, email: actorEmail });
-    const pricing = calculateDraftPrice(updatedDraft);
+    const updatedDraft = await approveDraftProof(id, { id: actorId, email: actorEmail });
+    const pricing = await calculateDraftPrice(updatedDraft);
 
     // PRD § 13: Customer notification email (proof_approved)
     const approvedProof = updatedDraft.proofs.find((p) => p.version === updatedDraft.proofVersion);

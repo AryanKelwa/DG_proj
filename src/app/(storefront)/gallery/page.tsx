@@ -1,4 +1,4 @@
-import { DIVISIONS, PRODUCTS } from "@/lib/data/mock-data";
+import { getAllDivisions, getAllProducts } from "@/modules/catalog/catalog-store";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -9,7 +9,10 @@ export const metadata = {
   description: "Real printed work organized across our six manufacturing divisions: labels, race bibs, MTB boards, stamps, trophies, and laser cutting.",
 };
 
-export default function GalleryPage() {
+export const revalidate = 60;
+
+export default async function GalleryPage() {
+  const [DIVISIONS, PRODUCTS] = await Promise.all([getAllDivisions(), getAllProducts()]);
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
       <div className="space-y-2">

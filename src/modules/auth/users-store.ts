@@ -1,251 +1,177 @@
-import { dataFile } from "../../lib/data-dir";
-import fs from "fs";
-import crypto from "crypto";
+import { db, unwrap } from "@/lib/supabase/server";
 import { Profile, UserRole } from "@/types/database";
 
+/**
+ * User accounts live in Supabase Auth (credentials) + public.profiles (role, contact
+ * details, active flag). Passwords are never stored or compared by this application.
+ */
+
 export interface StoredUser extends Profile {
-  passwordHash: string;
   isActive: boolean;
   orderCount?: number;
 }
 
-const USERS_STORE_FILE = dataFile(".users-store.json");
-
-export const INITIAL_USERS: Record<string, StoredUser> = {
-  "admin@w2p.co.in": {
-    id: "usr-admin-01",
-    email: "admin@w2p.co.in",
-    full_name: "Marcus Vance (Production Head)",
-    role: "admin",
-    company_name: "W2P Ltd",
-    phone: "+44 800 555 0199",
-    isActive: true,
-    created_at: "2026-03-01T08:00:00.000Z",
-    passwordHash: "admin123",
-  },
-};
-
-interface UsersStoreData {
-  users: Record<string, StoredUser>;
-  sessions: Record<string, { userId: string; expiresAt: number }>;
+interface ProfileRow {
+  id: string;
+  email: string;
+  full_name: string | null;
+  company_name: string | null;
+  phone: string | null;
+  role: "customer" | "admin";
+  is_active: boolean;
+  created_at: string;
 }
 
-let inMemoryUsers: UsersStoreData = { users: {}, sessions: {} };
-let lastLoadedMtime = 0;
-let isInitialized = false;
+const PROFILE_COLUMNS = "id, email, full_name, company_name, phone, role, is_active, created_at";
 
-function loadStore(): void {
-  try {
-    if (fs.existsSync(USERS_STORE_FILE)) {
-      const stats = fs.statSync(USERS_STORE_FILE);
-      if (!isInitialized || stats.mtimeMs > lastLoadedMtime) {
-        const raw = fs.readFileSync(USERS_STORE_FILE, "utf-8");
-        inMemoryUsers = JSON.parse(raw);
-        lastLoadedMtime = stats.mtimeMs;
-        isInitialized = true;
-      }
-      return;
-    }
-  } catch (err) {
-    console.warn("Could not read users store file, falling back to memory:", err);
-  }
-
-  if (!isInitialized) {
-    inMemoryUsers = { users: { ...INITIAL_USERS }, sessions: {} };
-    saveStore();
-    isInitialized = true;
-  }
-}
-
-function saveStore(): void {
-  try {
-    const json = JSON.stringify(inMemoryUsers, null, 2);
-    fs.writeFileSync(USERS_STORE_FILE, json, "utf-8");
-    const stats = fs.statSync(USERS_STORE_FILE);
-    lastLoadedMtime = stats.mtimeMs;
-  } catch (err) {
-    console.warn("Could not write users store file:", err);
-  }
-}
-
-export function getAllUsers(): StoredUser[] {
-  loadStore();
-  return Object.values(inMemoryUsers.users);
-}
-
-export function getUserById(id: string): StoredUser | null {
-  loadStore();
-  const user = Object.values(inMemoryUsers.users).find((u) => u.id === id);
-  return user || null;
-}
-
-export function getUserByEmail(email: string): StoredUser | null {
-  loadStore();
-  const lower = email.toLowerCase().trim();
-  return inMemoryUsers.users[lower] || null;
-}
-
-export function validateCredentials(email: string, password: string): { user: StoredUser | null; error?: string } {
-  loadStore();
-  const lower = email.toLowerCase().trim();
-  const user = inMemoryUsers.users[lower];
-
-  if (!user) {
-    return { user: null, error: "Invalid email or password." };
-  }
-
-  if (user.isActive === false) {
-    return { user: null, error: "Account has been deactivated. Please contact an administrator." };
-  }
-
-  const valid =
-    user.passwordHash === password ||
-    password === "password" ||
-    password === "admin123" ||
-    password === "customer123";
-
-  if (!valid) {
-    return { user: null, error: "Invalid email or password." };
-  }
-
-  return { user };
-}
-
-export function createSessionToken(user: StoredUser): string {
-  loadStore();
-  const token = crypto.randomBytes(32).toString("hex");
-  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
-
-  inMemoryUsers.sessions[token] = {
-    userId: user.id,
-    expiresAt,
+function toUser(row: ProfileRow): StoredUser {
+  return {
+    id: row.id,
+    email: row.email,
+    full_name: row.full_name,
+    company_name: row.company_name,
+    phone: row.phone,
+    role: row.role,
+    isActive: row.is_active,
+    created_at: row.created_at,
   };
-  saveStore();
-  return token;
 }
 
-export function verifySessionToken(token: string): StoredUser | null {
-  if (!token) return null;
-  loadStore();
-
-  const session = inMemoryUsers.sessions[token];
-  if (!session) return null;
-
-  if (Date.now() > session.expiresAt) {
-    delete inMemoryUsers.sessions[token];
-    saveStore();
-    return null;
-  }
-
-  const user = getUserById(session.userId);
-  if (!user || user.isActive === false) return null;
-
-  return user;
+export async function getAllUsers(): Promise<StoredUser[]> {
+  const rows = unwrap(
+    await db().from("profiles").select(PROFILE_COLUMNS).order("created_at", { ascending: true }),
+    "Load users"
+  );
+  return (rows as ProfileRow[]).map(toUser);
 }
 
-export function revokeSessionToken(token: string): void {
-  loadStore();
-  if (inMemoryUsers.sessions[token]) {
-    delete inMemoryUsers.sessions[token];
-    saveStore();
-  }
+export async function getUserById(id: string): Promise<StoredUser | null> {
+  const row = unwrap(
+    await db().from("profiles").select(PROFILE_COLUMNS).eq("id", id).maybeSingle(),
+    "Load user"
+  );
+  return row ? toUser(row as ProfileRow) : null;
 }
 
-export function updateUserRole(
+export async function getUserByEmail(email: string): Promise<StoredUser | null> {
+  const row = unwrap(
+    await db().from("profiles").select(PROFILE_COLUMNS).eq("email", email.toLowerCase().trim()).maybeSingle(),
+    "Load user by email"
+  );
+  return row ? toUser(row as ProfileRow) : null;
+}
+
+async function countActiveAdmins(): Promise<number> {
+  const { count, error } = await db()
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("role", "admin")
+    .eq("is_active", true);
+  if (error) throw new Error(`Count admins: ${error.message}`);
+  return count ?? 0;
+}
+
+export async function updateUserRole(
   adminUserId: string,
   targetUserId: string,
   newRole: UserRole
-): { success: boolean; user?: StoredUser; error?: string } {
-  loadStore();
-
-  const target = getUserById(targetUserId);
-  if (!target) {
-    return { success: false, error: "Target user not found" };
+): Promise<{ success: boolean; user?: StoredUser; error?: string }> {
+  if (newRole !== "customer" && newRole !== "admin") {
+    return { success: false, error: "Invalid role." };
   }
 
-  // Safeguard 1: Cannot demote yourself
+  const target = await getUserById(targetUserId);
+  if (!target) return { success: false, error: "Target user not found" };
+
   if (adminUserId === targetUserId && newRole !== "admin") {
     return { success: false, error: "You cannot demote your own admin account." };
   }
-
-  // Safeguard 2: Cannot demote the last remaining admin
-  if (target.role === "admin" && newRole !== "admin") {
-    const adminCount = Object.values(inMemoryUsers.users).filter((u) => u.role === "admin" && u.isActive !== false).length;
-    if (adminCount <= 1) {
-      return { success: false, error: "Cannot demote the last active administrator." };
-    }
+  if (target.role === "admin" && newRole !== "admin" && target.isActive && (await countActiveAdmins()) <= 1) {
+    return { success: false, error: "Cannot demote the last active administrator." };
   }
 
-  target.role = newRole;
-  inMemoryUsers.users[target.email.toLowerCase()] = target;
-  saveStore();
-  return { success: true, user: target };
+  const row = unwrap(
+    await db().from("profiles").update({ role: newRole }).eq("id", targetUserId).select(PROFILE_COLUMNS).single(),
+    "Update role"
+  );
+  return { success: true, user: toUser(row as ProfileRow) };
 }
 
-export function updateUserStatus(
+export async function updateUserStatus(
   adminUserId: string,
   targetUserId: string,
   isActive: boolean
-): { success: boolean; user?: StoredUser; error?: string } {
-  loadStore();
+): Promise<{ success: boolean; user?: StoredUser; error?: string }> {
+  const target = await getUserById(targetUserId);
+  if (!target) return { success: false, error: "Target user not found" };
 
-  const target = getUserById(targetUserId);
-  if (!target) {
-    return { success: false, error: "Target user not found" };
-  }
-
-  // Safeguard 1: Cannot deactivate yourself
   if (adminUserId === targetUserId && !isActive) {
     return { success: false, error: "You cannot deactivate your own account." };
   }
-
-  // Safeguard 2: Cannot deactivate the last admin
-  if (target.role === "admin" && !isActive) {
-    const activeAdmins = Object.values(inMemoryUsers.users).filter(
-      (u) => u.role === "admin" && u.isActive !== false
-    ).length;
-    if (activeAdmins <= 1) {
-      return { success: false, error: "Cannot deactivate the last active administrator." };
-    }
+  if (target.role === "admin" && !isActive && target.isActive && (await countActiveAdmins()) <= 1) {
+    return { success: false, error: "Cannot deactivate the last active administrator." };
   }
 
-  target.isActive = isActive;
-  inMemoryUsers.users[target.email.toLowerCase()] = target;
-  saveStore();
-  return { success: true, user: target };
+  const row = unwrap(
+    await db().from("profiles").update({ is_active: isActive }).eq("id", targetUserId).select(PROFILE_COLUMNS).single(),
+    "Update status"
+  );
+
+  // A deactivated user must not keep a working session.
+  if (!isActive) {
+    await db().auth.admin.signOut(targetUserId).catch(() => undefined);
+  }
+
+  return { success: true, user: toUser(row as ProfileRow) };
 }
 
-export function registerCustomerUser(
+/**
+ * Creates a customer account. The role is always 'customer' (set by the
+ * on_auth_user_created trigger); it is never taken from the request.
+ *
+ * Accounts are created pre-confirmed: transactional email is in sandbox mode during
+ * development, so a confirmation link could not reach real customers yet.
+ */
+export async function registerCustomerUser(
   email: string,
   password: string,
   metadata: { fullName: string; companyName?: string; phone?: string }
-): { success: boolean; user?: StoredUser; error?: string } {
-  loadStore();
+): Promise<{ success: boolean; user?: StoredUser; error?: string }> {
+  const normalisedEmail = email.toLowerCase().trim();
 
-  const lower = email.toLowerCase().trim();
-  if (inMemoryUsers.users[lower]) {
-    return { success: false, error: "An account with this email already exists." };
+  const { data, error } = await db().auth.admin.createUser({
+    email: normalisedEmail,
+    password,
+    email_confirm: true,
+    user_metadata: {
+      full_name: metadata.fullName,
+      company_name: metadata.companyName || "",
+      phone: metadata.phone || "",
+    },
+  });
+
+  if (error || !data.user) {
+    const message = error?.message || "Registration failed.";
+    if (/already (been )?registered|already exists/i.test(message)) {
+      return { success: false, error: "An account with this email already exists." };
+    }
+    return { success: false, error: message };
   }
 
-  // Public signup strictly creates customers only (PRD § 03)
-  const newUser: StoredUser = {
-    id: `usr-cust-${Date.now()}`,
-    email: lower,
-    full_name: metadata.fullName,
-    company_name: metadata.companyName || null,
-    phone: metadata.phone || null,
-    role: "customer", // Enforced server-side
-    isActive: true,
-    created_at: new Date().toISOString(),
-    passwordHash: password,
-  };
-
-  inMemoryUsers.users[lower] = newUser;
-  saveStore();
-  return { success: true, user: newUser };
+  const user = await getUserById(data.user.id);
+  if (!user) {
+    return { success: false, error: "Account created but profile is missing. Has the database migration been applied?" };
+  }
+  return { success: true, user };
 }
 
-export function resetUsersStore(seedUsers?: Record<string, StoredUser>): void {
-  inMemoryUsers = { users: seedUsers ? { ...seedUsers } : { ...INITIAL_USERS }, sessions: {} };
-  saveStore();
+/** Password rules shared by registration (server) and the signup form. */
+export function validatePasswordStrength(password: string): string | null {
+  if (typeof password !== "string" || password.length < 8) {
+    return "Password must be at least 8 characters.";
+  }
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return "Password must contain at least one letter and one number.";
+  }
+  return null;
 }

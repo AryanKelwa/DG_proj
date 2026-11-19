@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/server-auth";
 import { getAuditLogs } from "@/modules/audit/audit-store";
 
 export async function GET(req: NextRequest) {
-  const auth = requireAdmin(req);
+  const auth = await requireAdmin(req);
   if (!auth.authorized) {
     return auth.response!;
   }
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const action = searchParams.get("action") || undefined;
     const limit = parseInt(searchParams.get("limit") || "100", 10);
 
-    const logs = getAuditLogs({ target_type, target_id, action, limit });
+    const logs = await getAuditLogs({ target_type, target_id, action, limit });
 
     return NextResponse.json({ logs });
   } catch (err: unknown) {

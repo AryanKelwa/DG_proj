@@ -353,7 +353,7 @@ create trigger saved_designs_updated_at before update on public.saved_designs
 -- -----------------------------------------------------------------------------
 create table if not exists public.email_logs (
   id                  uuid primary key default gen_random_uuid(),
-  idempotency_key     text not null unique,
+  idempotency_key     text not null,
   order_ref           text not null,               -- order id or draft id the email is about
   event               text not null,
   recipient           text not null,
@@ -369,6 +369,8 @@ create table if not exists public.email_logs (
   created_at          timestamptz not null default now()
 );
 
+-- Exactly-once: at most one SENT email per idempotency key (failed/skipped attempts may repeat).
+create unique index if not exists email_logs_sent_once_idx on public.email_logs (idempotency_key) where status = 'sent';
 create index if not exists email_logs_order_idx on public.email_logs (order_ref);
 create index if not exists email_logs_created_idx on public.email_logs (created_at desc);
 

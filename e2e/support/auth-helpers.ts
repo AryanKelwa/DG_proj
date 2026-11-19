@@ -58,3 +58,18 @@ export async function logoutViaUi(page: Page) {
     await page.waitForURL(/\/login(\?|$)/, { timeout: 10000 });
   }
 }
+
+/**
+ * Signs in through the API and returns the Supabase access token for
+ * `Authorization: Bearer` requests.
+ */
+export async function apiToken(
+  request: import("@playwright/test").APIRequestContext,
+  credentials: { email: string; password: string }
+): Promise<string> {
+  const res = await request.post("/api/auth/login", { data: credentials });
+  if (res.status() !== 200) {
+    throw new Error(`API login failed for ${credentials.email}: HTTP ${res.status()}`);
+  }
+  return (await res.json()).token as string;
+}

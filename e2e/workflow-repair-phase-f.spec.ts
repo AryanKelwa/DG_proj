@@ -99,7 +99,7 @@ test.describe("Phase F: Workflow Repair & Approval Gate Enforcement (PRD ยง01, ย
     await expect(page.locator("button[type='submit']")).toHaveCount(0);
 
     // 2. Visit /checkout with an unapproved draft (configured only)
-    const unapprovedDraft = createDraft({
+    const unapprovedDraft = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 80,
       heightMm: 80,
@@ -138,7 +138,7 @@ test.describe("Phase F: Workflow Repair & Approval Gate Enforcement (PRD ยง01, ย
     page,
   }) => {
     test.setTimeout(90000);
-    const draft = createDraft({
+    const draft = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 100,
       heightMm: 100,
@@ -180,7 +180,7 @@ test.describe("Phase F: Workflow Repair & Approval Gate Enforcement (PRD ยง01, ย
     page,
   }) => {
     test.setTimeout(90000);
-    const draft = createDraft({
+    const draft = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 75,
       heightMm: 75,
@@ -218,7 +218,7 @@ test.describe("Phase F: Workflow Repair & Approval Gate Enforcement (PRD ยง01, ย
     request,
   }) => {
     // Deliberately create draft in 'configured' status without approval
-    const mutantDraft = createDraft({
+    const mutantDraft = await createDraft({
       productId: "custom-die-cut-vinyl",
       widthMm: 50,
       heightMm: 50,

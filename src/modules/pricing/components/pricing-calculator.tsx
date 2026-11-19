@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { PRODUCTS } from "@/lib/data/mock-data";
+import type { ExtendedProduct } from "@/modules/catalog/catalog-store";
 import { calculatePrintPrice } from "@/modules/pricing/pricing-engine";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Sliders, Sparkles, Check, ArrowRight, Layers, Tag, Loader2 } from "lucide-react";
 
-export function PricingCalculator() {
+export function PricingCalculator({ products: PRODUCTS }: { products: ExtendedProduct[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const productParam = searchParams.get("product");

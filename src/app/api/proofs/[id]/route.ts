@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/server-auth";
 import { getProofById } from "@/modules/proofs/proofs-store";
-import { getOrderById } from "@/modules/orders/order-store";
 
 export async function GET(
   req: NextRequest,
@@ -9,7 +8,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
     if (!sessionUser) {
       return NextResponse.json(
         { error: "Unauthorized: Valid session required" },
@@ -17,17 +16,13 @@ export async function GET(
       );
     }
 
-    const proof = getProofById(id);
+    const proof = await getProofById(id);
     if (!proof) {
       return NextResponse.json({ error: "Proof not found" }, { status: 404 });
     }
 
     if (sessionUser.role !== "admin") {
-      const order = getOrderById(proof.order_id);
-      const isOwner =
-        order &&
-        (order.customer_id === sessionUser.id ||
-          order.customer_email?.toLowerCase() === sessionUser.email.toLowerCase());
+      const isOwner = proof.customer_id === sessionUser.id;
 
       if (!isOwner) {
         return NextResponse.json(

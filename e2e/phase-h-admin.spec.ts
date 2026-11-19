@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
-import { seedPhaseHDatabase } from "../src/modules/seed/seed-data";
+import { seedDatabase } from "../src/modules/seed/seed";
+import { TEST_USERS, apiToken } from "./support/auth-helpers";
 import {
   searchAdminOrders,
   getOrderById,
@@ -9,14 +10,15 @@ import {
   generateSignedDownloadToken,
   verifySignedDownloadToken,
 } from "../src/modules/orders/order-store";
-import { getUserById, createSessionToken } from "../src/modules/auth/users-store";
+import { getUserByEmail } from "../src/modules/auth/users-store";
 import { getAuditLogs } from "../src/modules/audit/audit-store";
 
 test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §15, §16)", () => {
   test.setTimeout(120000);
 
-  test.beforeEach(async () => {
-    seedPhaseHDatabase();
+  // Reset the demo accounts once for this file (the seed talks to Supabase and is not instant).
+  test.beforeAll(async () => {
+    await seedDatabase();
   });
 
   // Fail on any uncaught page error or console error
@@ -166,8 +168,7 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
   }) => {
     setupErrorListeners(page);
 
-    const admin = getUserById("usr-admin-01");
-    const adminToken = createSessionToken(admin!);
+    const adminToken = await apiToken(request, TEST_USERS.admin);
 
     // 1. Unpaid / unapproved order (W2P-2026-00301) download request is REFUSED (403)
     const unreadyRes = await request.get("/api/admin/orders/W2P-2026-00301/download-production", {
@@ -204,7 +205,7 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
     expect(expiredRes.status()).toBe(403);
 
     // 6. Verify download action was recorded in audit store
-    const logs = getAuditLogs({ action: "production_file_download" });
+    const logs = await getAuditLogs({ action: "production_file_download" });
     expect(logs.length).toBeGreaterThan(0);
     expect(logs[0].target_id).toBe("W2P-2026-00101");
   });
@@ -212,8 +213,7 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
   test("4. Sequential Pipeline: Forward passes, skip/backward rejected, history logged, concurrency returns 409", async ({
     request,
   }) => {
-    const admin = getUserById("usr-admin-01");
-    const adminToken = createSessionToken(admin!);
+    const adminToken = await apiToken(request, TEST_USERS.admin);
     const headers = { Authorization: `Bearer ${adminToken}` };
 
     // 1. Valid forward transition: ARTWORK -> PROOF on order W2P-2026-00302
@@ -268,8 +268,7 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
     request,
     page,
   }) => {
-    const admin = getUserById("usr-admin-01");
-    const adminToken = createSessionToken(admin!);
+    const adminToken = await apiToken(request, TEST_USERS.admin);
     const headers = { Authorization: `Bearer ${adminToken}` };
 
     // 1. Promote Customer C to Admin
@@ -324,8 +323,7 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
   test("6. Products & Templates: Live storefront price updates without redeploy; invalid tiers rejected", async ({
     request,
   }) => {
-    const admin = getUserById("usr-admin-01");
-    const adminToken = createSessionToken(admin!);
+    const adminToken = await apiToken(request, TEST_USERS.admin);
     const headers = { Authorization: `Bearer ${adminToken}` };
 
     // 1. Update product base price to 25p and price per sq cm to 5p
@@ -368,8 +366,7 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
   test("7. Reports & Archive: Confirmed revenue matches SQL aggregates; completed order retrieved in archive", async ({
     request,
   }) => {
-    const admin = getUserById("usr-admin-01");
-    const adminToken = createSessionToken(admin!);
+    const adminToken = await apiToken(request, TEST_USERS.admin);
     const headers = { Authorization: `Bearer ${adminToken}` };
 
     // 1. Query reports
@@ -408,8 +405,7 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
     expect(unauthReports.status()).toBe(401);
 
     // 2. Customer session calling admin endpoints returns 403
-    const customer = getUserById("usr-cust-1");
-    const custToken = createSessionToken(customer!);
+    const custToken = await apiToken(request, TEST_USERS.customerA);
     const custHeaders = { Authorization: `Bearer ${custToken}` };
 
     const custOrders = await request.get("/api/admin/orders", { headers: custHeaders });
@@ -433,8 +429,8 @@ test.describe("PHASE H: Admin Console & Security (PRD §03, §11, §13, §14, §
 
   test("9. Mutation Check: Removing admin check from endpoint causes security test to fail", async () => {
     // Verified via architecture: requireAdmin checks user.role === 'admin'
-    const admin = getUserById("usr-admin-01");
-    const customer = getUserById("usr-cust-1");
+    const admin = await getUserByEmail(TEST_USERS.admin.email);
+    const customer = await getUserByEmail(TEST_USERS.customerA.email);
     expect(admin?.role).toBe("admin");
     expect(customer?.role).toBe("customer");
   });

@@ -60,15 +60,17 @@ test.describe("A1/A2 · Authentication", () => {
   });
 
   test("A2: registration must not store the password in plain text", async ({ request }) => {
-    const email = `plain-${Date.now()}@example.com`;
+    const email = `plain-${Date.now()}@e2e.w2p.test`;
     const password = "Sup3r-Secret-Pass!";
     const res = await request.post("/api/auth/register", { data: { email, password, fullName: "Plain Text" } });
     expect(res.status()).toBe(201);
 
-    const { getUserByEmail } = await import("../src/modules/auth/users-store");
-    const stored = getUserByEmail(email);
-    expect(stored, "registered user should exist").toBeTruthy();
-    expect(stored!.passwordHash).not.toBe(password);
+    // Credentials live only in Supabase Auth: the app's profile row must hold no password data.
+    const { db } = await import("../src/lib/supabase/server");
+    const { data } = await db().from("profiles").select("*").eq("email", email).single();
+    expect(data, "registered user should have a profile").toBeTruthy();
+    expect(Object.keys(data!).filter((c) => /pass/i.test(c))).toEqual([]);
+    expect(JSON.stringify(data)).not.toContain(password);
   });
 });
 
@@ -227,11 +229,9 @@ test.describe("A7–A10 · Authorisation & isolation", () => {
   });
 
   test("A9: a customer session must not be served the admin production console", async ({ request }) => {
-    const token = await loginToken(request, TEST_USERS.customerA.email, TEST_USERS.customerA.password);
-    const res = await request.get("/production", {
-      headers: { Cookie: `w2p_session=${token}` },
-      maxRedirects: 0,
-    });
+    // Signing in through the API stores the session cookies in this request context.
+    await loginToken(request, TEST_USERS.customerA.email, TEST_USERS.customerA.password);
+    const res = await request.get("/production", { maxRedirects: 0 });
     expect([302, 303, 307, 308, 403, 404]).toContain(res.status());
   });
 

@@ -4,7 +4,7 @@ import { getProofsForUser } from "@/modules/proofs/proofs-store";
 
 export async function GET(req: NextRequest) {
   try {
-    const sessionUser = getAuthUser(req);
+    const sessionUser = await getAuthUser(req);
     if (!sessionUser) {
       return NextResponse.json(
         { error: "Unauthorized: Valid session required to view proofs" },
@@ -12,11 +12,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const proofs = getProofsForUser(
-      sessionUser.id,
-      sessionUser.email,
-      sessionUser.role
-    );
+    const proofs = await getProofsForUser(sessionUser.id, sessionUser.role);
 
     return NextResponse.json({ proofs });
   } catch (err: unknown) {

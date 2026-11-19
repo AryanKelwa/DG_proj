@@ -1,100 +1,97 @@
-import { dataFile } from "../../lib/data-dir";
-import fs from "fs";
+import { db, unwrap } from "@/lib/supabase/server";
 import { SavedDesign } from "@/types/database";
 
-const DESIGNS_STORE_FILE = dataFile(".saved-designs-store.json");
+/** Saved designs repository (public.saved_designs). Always scoped to the owner. */
 
-interface DesignsStoreData {
-  designs: Record<string, SavedDesign>;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface DesignRow {
+  id: string;
+  customer_id: string;
+  product_id: string;
+  name: string;
+  width_mm: number | string;
+  height_mm: number | string;
+  material_id: string;
+  canvas_state: Record<string, unknown>;
+  preview_url: string | null;
+  created_at: string;
+  updated_at: string;
+  products: { name: string; slug: string } | null;
 }
 
-let inMemoryDesigns: DesignsStoreData = { designs: {} };
-let lastLoadedMtime = 0;
-let isInitialized = false;
-
-function loadStore(): void {
-  try {
-    if (fs.existsSync(DESIGNS_STORE_FILE)) {
-      const stats = fs.statSync(DESIGNS_STORE_FILE);
-      if (!isInitialized || stats.mtimeMs > lastLoadedMtime) {
-        const raw = fs.readFileSync(DESIGNS_STORE_FILE, "utf-8");
-        inMemoryDesigns = JSON.parse(raw);
-        lastLoadedMtime = stats.mtimeMs;
-        isInitialized = true;
-      }
-      return;
-    }
-  } catch (err) {
-    console.warn("Could not read saved designs store file, using in-memory:", err);
-  }
-
-  if (!isInitialized) {
-    inMemoryDesigns = { designs: {} };
-    saveStore();
-    isInitialized = true;
-  }
+function toDesign(row: DesignRow): SavedDesign & { product_slug: string } {
+  return {
+    id: row.id,
+    customer_id: row.customer_id,
+    product_id: row.product_id,
+    product_slug: row.products?.slug ?? "",
+    product_name: row.products?.name ?? row.product_id,
+    name: row.name,
+    width_mm: Number(row.width_mm),
+    height_mm: Number(row.height_mm),
+    material: row.material_id,
+    canvas_state: row.canvas_state,
+    preview_url: row.preview_url ?? "",
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 }
 
-function saveStore(): void {
-  try {
-    const json = JSON.stringify(inMemoryDesigns, null, 2);
-    fs.writeFileSync(DESIGNS_STORE_FILE, json, "utf-8");
-    const stats = fs.statSync(DESIGNS_STORE_FILE);
-    lastLoadedMtime = stats.mtimeMs;
-  } catch (err) {
-    console.warn("Could not write saved designs store file:", err);
+const DESIGN_COLUMNS = "*, products(name, slug)";
+
+export async function getSavedDesignsForUser(userId: string, role: string = "customer") {
+  let query = db().from("saved_designs").select(DESIGN_COLUMNS).order("created_at", { ascending: false });
+  if (role !== "admin") {
+    if (!UUID_RE.test(userId)) return [];
+    query = query.eq("customer_id", userId);
   }
+  const rows = unwrap(await query, "Load saved designs");
+  return (rows as unknown as DesignRow[]).map(toDesign);
 }
 
-export function getSavedDesignsForUser(
-  userId: string,
-  role: string = "customer"
-): SavedDesign[] {
-  loadStore();
-  const all = Object.values(inMemoryDesigns.designs).sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+export async function getSavedDesignById(id: string) {
+  if (!UUID_RE.test(id)) return null;
+  const row = unwrap(await db().from("saved_designs").select(DESIGN_COLUMNS).eq("id", id).maybeSingle(), "Load saved design");
+  return row ? toDesign(row as unknown as DesignRow) : null;
+}
+
+export async function saveDesign(design: {
+  customer_id: string;
+  product_id: string;
+  name: string;
+  width_mm: number;
+  height_mm: number;
+  material: string;
+  canvas_state: Record<string, unknown>;
+  preview_url?: string;
+}) {
+  const row = unwrap(
+    await db()
+      .from("saved_designs")
+      .insert({
+        customer_id: design.customer_id,
+        product_id: design.product_id,
+        name: design.name,
+        width_mm: design.width_mm,
+        height_mm: design.height_mm,
+        material_id: design.material,
+        canvas_state: design.canvas_state,
+        preview_url: design.preview_url || null,
+      })
+      .select(DESIGN_COLUMNS)
+      .single(),
+    "Save design"
   );
-
-  if (role === "admin") {
-    return all;
-  }
-
-  if (!userId) {
-    return [];
-  }
-
-  return all.filter((d) => d.customer_id === userId);
+  return toDesign(row as unknown as DesignRow);
 }
 
-export function getSavedDesignById(id: string): SavedDesign | null {
-  loadStore();
-  return inMemoryDesigns.designs[id] || null;
-}
-
-export function saveDesign(design: SavedDesign): SavedDesign {
-  loadStore();
-  inMemoryDesigns.designs[design.id] = design;
-  saveStore();
-  return design;
-}
-
-export function deleteSavedDesign(id: string, userId: string): boolean {
-  loadStore();
-  const target = inMemoryDesigns.designs[id];
-  if (!target) return false;
-  if (target.customer_id !== userId) return false;
-
-  delete inMemoryDesigns.designs[id];
-  saveStore();
-  return true;
-}
-
-export function resetSavedDesignsStore(seedDesigns?: SavedDesign[]): void {
-  inMemoryDesigns = { designs: {} };
-  if (seedDesigns) {
-    for (const d of seedDesigns) {
-      inMemoryDesigns.designs[d.id] = d;
-    }
-  }
-  saveStore();
+/** Deletes a design only if it belongs to userId. Returns false when not found/not owned. */
+export async function deleteSavedDesign(id: string, userId: string): Promise<boolean> {
+  if (!UUID_RE.test(id)) return false;
+  const rows = unwrap(
+    await db().from("saved_designs").delete().eq("id", id).eq("customer_id", userId).select("id"),
+    "Delete saved design"
+  ) as Array<{ id: string }>;
+  return rows.length > 0;
 }

@@ -33,8 +33,8 @@ export async function sendNotificationEmail(
   const idempotencyKey = generateIdempotencyKey(payload);
 
   // 1. Idempotency Check: prevent duplicate sends on webhook replays
-  if (hasSuccessfulSend(idempotencyKey)) {
-    const skippedRecord = recordEmailLog({
+  if (await hasSuccessfulSend(idempotencyKey)) {
+    const skippedRecord = await recordEmailLog({
       idempotency_key: idempotencyKey,
       order_id: payload.orderId || payload.orderNumber,
       event: payload.event,
@@ -73,7 +73,7 @@ export async function sendNotificationEmail(
     });
 
     // 4. Log successful send in email_log table
-    const logRecord = recordEmailLog({
+    const logRecord = await recordEmailLog({
       idempotency_key: idempotencyKey,
       order_id: payload.orderId || payload.orderNumber,
       event: payload.event,
@@ -107,7 +107,7 @@ export async function sendNotificationEmail(
     const errorMsg = err instanceof Error ? err.message : "Email provider dispatch failed";
 
     // 5. Log provider failure in email_log table
-    const failRecord = recordEmailLog({
+    const failRecord = await recordEmailLog({
       idempotency_key: idempotencyKey,
       order_id: payload.orderId || payload.orderNumber,
       event: payload.event,
@@ -128,7 +128,7 @@ export async function sendNotificationEmail(
 
     return {
       success: false,
-      logId: failRecord.id,
+      logId: failRecord?.id,
       idempotencyKey,
       status: "failed",
       error: errorMsg,
@@ -150,7 +150,8 @@ export async function safeSendNotificationEmail(
     console.error("[EmailNotification] Provider failure intercepted:", errorMsg);
 
     const idempotencyKey = generateIdempotencyKey(payload);
-    const failRecord = recordEmailLog({
+    // Logging itself may be what failed (e.g. database unavailable): never throw from here.
+    const failRecord = await recordEmailLog({
       idempotency_key: idempotencyKey,
       order_id: payload.orderId || payload.orderNumber,
       event: payload.event,
@@ -163,11 +164,11 @@ export async function safeSendNotificationEmail(
       provider: process.env.EMAIL_PROVIDER || "unknown",
       error: errorMsg,
       metadata: { payloadSummary: payload.event },
-    });
+    }).catch(() => null);
 
     return {
       success: false,
-      logId: failRecord.id,
+      logId: failRecord?.id,
       idempotencyKey,
       status: "failed",
       error: errorMsg,

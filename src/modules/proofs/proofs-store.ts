@@ -1,112 +1,77 @@
-import { dataFile } from "../../lib/data-dir";
-import fs from "fs";
-import { Proof } from "@/types/database";
-import { getOrdersForUser } from "@/modules/orders/order-store";
+import { db, unwrap } from "@/lib/supabase/server";
+import { Proof, ProofStatus } from "@/types/database";
 
-const PROOFS_STORE_FILE = dataFile(".proofs-store.json");
+/**
+ * Proof repository over public.draft_proofs.
+ *
+ * Every proof belongs to a job draft; once the draft is paid its order carries
+ * `draft_id`, so the same versioned proofs serve the customer dashboard, the
+ * approval gate and the admin console. `order_id` on the returned Proof is the
+ * order number when the draft has been ordered, otherwise the draft id.
+ */
 
-interface ProofsStoreData {
-  proofs: Record<string, Proof>;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface ProofRow {
+  id: string;
+  draft_id: string;
+  version: number;
+  status: ProofStatus | "superseded";
+  rendered_url: string;
+  feedback: string | null;
+  approved_by_email: string | null;
+  approved_at: string | null;
+  created_at: string;
+  drafts: { customer_id: string | null; orders: { order_number: string } | null } | null;
 }
 
-let inMemoryProofs: ProofsStoreData = { proofs: {} };
-let lastLoadedMtime = 0;
-let isInitialized = false;
+const PROOF_COLUMNS = "*, drafts!inner(customer_id, orders:orders!drafts_order_fk(order_number))";
 
-function loadStore(): void {
-  try {
-    if (fs.existsSync(PROOFS_STORE_FILE)) {
-      const stats = fs.statSync(PROOFS_STORE_FILE);
-      if (!isInitialized || stats.mtimeMs > lastLoadedMtime) {
-        const raw = fs.readFileSync(PROOFS_STORE_FILE, "utf-8");
-        inMemoryProofs = JSON.parse(raw);
-        lastLoadedMtime = stats.mtimeMs;
-        isInitialized = true;
-      }
-      return;
-    }
-  } catch (err) {
-    console.warn("Could not read proofs store file, using in-memory:", err);
-  }
-
-  if (!isInitialized) {
-    inMemoryProofs = { proofs: {} };
-    saveStore();
-    isInitialized = true;
-  }
-}
-
-function saveStore(): void {
-  try {
-    const json = JSON.stringify(inMemoryProofs, null, 2);
-    fs.writeFileSync(PROOFS_STORE_FILE, json, "utf-8");
-    const stats = fs.statSync(PROOFS_STORE_FILE);
-    lastLoadedMtime = stats.mtimeMs;
-  } catch (err) {
-    console.warn("Could not write proofs store file:", err);
-  }
-}
-
-export function getProofsForUser(
-  userId: string,
-  userEmail?: string,
-  role: string = "customer"
-): Proof[] {
-  loadStore();
-  const all = Object.values(inMemoryProofs.proofs).sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
-
-  if (role === "admin") {
-    return all;
-  }
-
-  if (!userId && !userEmail) {
-    return [];
-  }
-
-  // Get user's orders to correlate proofs strictly
-  const userOrders = getOrdersForUser(userId, userEmail, "customer");
-  const userOrderIds = new Set(userOrders.map((o) => o.id));
-  const userOrderNumbers = new Set(userOrders.map((o) => o.order_number));
-
-  return all.filter(
-    (p) => userOrderIds.has(p.order_id) || userOrderNumbers.has(p.order_id)
-  );
-}
-
-export function getProofById(id: string): Proof | null {
-  loadStore();
-  return inMemoryProofs.proofs[id] || null;
-}
-
-export function saveProof(proof: Proof): Proof {
-  loadStore();
-  inMemoryProofs.proofs[proof.id] = proof;
-  saveStore();
-  return proof;
-}
-
-export function updateProof(id: string, updates: Partial<Proof>): Proof | null {
-  loadStore();
-  const target = inMemoryProofs.proofs[id];
-  if (!target) return null;
-
-  const updated: Proof = {
-    ...target,
-    ...updates,
+function toProof(row: ProofRow): Proof {
+  return {
+    id: row.id,
+    order_item_id: row.draft_id,
+    order_id: row.drafts?.orders?.order_number ?? row.draft_id,
+    version_number: row.version,
+    status: (row.status === "superseded" ? "changes_requested" : row.status) as ProofStatus,
+    watermarked_preview_url: row.rendered_url,
+    customer_feedback: row.feedback,
+    approved_by: row.approved_by_email,
+    approved_at: row.approved_at,
+    created_at: row.created_at,
   };
-  inMemoryProofs.proofs[id] = updated;
-  saveStore();
-  return updated;
 }
 
-export function resetProofsStore(seedProofs?: Proof[]): void {
-  inMemoryProofs = { proofs: {} };
-  if (seedProofs) {
-    for (const p of seedProofs) {
-      inMemoryProofs.proofs[p.id] = p;
-    }
+/** Proofs visible to a user: their own drafts' proofs, or all proofs for admins. */
+export async function getProofsForUser(userId: string, role: string = "customer"): Promise<Proof[]> {
+  let query = db().from("draft_proofs").select(PROOF_COLUMNS).order("created_at", { ascending: false });
+  if (role !== "admin") {
+    if (!userId || !UUID_RE.test(userId)) return [];
+    query = query.eq("drafts.customer_id", userId);
   }
-  saveStore();
+  const rows = unwrap(await query, "Load proofs");
+  return (rows as unknown as ProofRow[]).map(toProof);
+}
+
+export async function getProofById(id: string): Promise<(Proof & { customer_id: string | null }) | null> {
+  if (!UUID_RE.test(id)) return null;
+  const row = unwrap(await db().from("draft_proofs").select(PROOF_COLUMNS).eq("id", id).maybeSingle(), "Load proof") as
+    | ProofRow
+    | null;
+  return row ? { ...toProof(row), customer_id: row.drafts?.customer_id ?? null } : null;
+}
+
+export async function updateProof(
+  id: string,
+  updates: Partial<Pick<Proof, "status" | "approved_by" | "approved_at" | "customer_feedback">>
+): Promise<Proof | null> {
+  if (!UUID_RE.test(id)) return null;
+  const columns: Record<string, unknown> = {};
+  if (updates.status !== undefined) columns.status = updates.status;
+  if (updates.approved_by !== undefined) columns.approved_by_email = updates.approved_by;
+  if (updates.approved_at !== undefined) columns.approved_at = updates.approved_at;
+  if (updates.customer_feedback !== undefined) columns.feedback = updates.customer_feedback;
+
+  unwrap(await db().from("draft_proofs").update(columns).eq("id", id), "Update proof");
+  return getProofById(id);
 }

@@ -219,11 +219,11 @@ test.describe("PHASE I: Customer Data Leak & Identity Hardening (PRD § 03, § 1
   test("6. Mutation Check: Disabling customer_id filter leaks data and fails assertion", async () => {
     // Normal query with filter returns 0
     const { getSavedDesignsForUser } = await import("@/modules/designs/saved-designs-store");
-    const isolated = getSavedDesignsForUser("usr-fresh-test", "customer");
+    const isolated = await getSavedDesignsForUser("usr-fresh-test", "customer");
     expect(isolated.length).toBe(0);
 
     // Mutated query without customer filter leaks seeded design
-    const leaked = getSavedDesignsForUser("usr-fresh-test", "admin");
+    const leaked = await getSavedDesignsForUser("usr-fresh-test", "admin");
     expect(leaked.length).toBeGreaterThan(0);
   });
 });
