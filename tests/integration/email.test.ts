@@ -89,9 +89,14 @@ describe("Transactional email (PRD § 13)", { skip: !hasDatabase }, () => {
     assert.match(logs[0].error ?? "", /503/);
   });
 
-  it("redirects to the sandbox recipient while sending from onboarding@resend.dev", async () => {
+  it("sends to the customer by default, and to the sandbox recipient only when sandbox mode is on", async () => {
+    await sendNotificationEmail({ to: "customer-direct@e2e.w2p.test", event: "order_confirmed", orderId: ref("direct"), orderNumber: "direct" });
+    assert.strictEqual(getCapturedEmails()[0].to, "customer-direct@e2e.w2p.test");
+    clearCapturedEmails();
+
     const orderId = ref("sandbox");
-    const previous = { from: process.env.EMAIL_FROM, sandbox: process.env.EMAIL_SANDBOX_RECIPIENT };
+    const previous = { from: process.env.EMAIL_FROM, sandbox: process.env.EMAIL_SANDBOX_RECIPIENT, mode: process.env.EMAIL_SANDBOX_MODE };
+    process.env.EMAIL_SANDBOX_MODE = "true";
     process.env.EMAIL_FROM = "onboarding@resend.dev";
     process.env.EMAIL_SANDBOX_RECIPIENT = "owner@e2e.w2p.test";
     try {
@@ -103,6 +108,7 @@ describe("Transactional email (PRD § 13)", { skip: !hasDatabase }, () => {
     } finally {
       process.env.EMAIL_FROM = previous.from;
       process.env.EMAIL_SANDBOX_RECIPIENT = previous.sandbox;
+      process.env.EMAIL_SANDBOX_MODE = previous.mode;
     }
   });
 });
