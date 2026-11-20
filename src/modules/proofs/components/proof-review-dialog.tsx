@@ -125,17 +125,17 @@ export function ProofReviewDialog({
             <div>
               <span className="text-muted-foreground block text-[10px]">FINISHED TRIM</span>
               <span className="font-bold text-foreground">
-                {proof.metadata.widthMm}mm × {proof.metadata.heightMm}mm
+                {proof.metadata.widthMm && proof.metadata.heightMm ? `${proof.metadata.widthMm}mm × ${proof.metadata.heightMm}mm` : "—"}
               </span>
             </div>
             <div>
               <span className="text-muted-foreground block text-[10px]">BLEED OVERPRINT</span>
-              <span className="font-bold text-red-500">+{proof.metadata.bleedMm}mm</span>
+              <span className="font-bold text-red-500">{proof.metadata.bleedMm !== undefined ? `+${proof.metadata.bleedMm}mm` : "—"}</span>
             </div>
             <div>
               <span className="text-muted-foreground block text-[10px]">SUBSTRATE</span>
               <span className="font-bold text-foreground truncate block">
-                {proof.metadata.materialName}
+                {proof.metadata.materialName || "—"}
               </span>
             </div>
             <div>

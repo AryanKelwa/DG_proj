@@ -22,10 +22,33 @@ interface ProofRow {
   approved_by_email: string | null;
   approved_at: string | null;
   created_at: string;
-  drafts: { customer_id: string | null; orders: { order_number: string } | null } | null;
+  drafts: {
+    customer_id: string | null;
+    options: { widthMm?: number; heightMm?: number; bleedMm?: number; materialId?: string } | null;
+    products: { name: string; default_bleed_mm: number; allowed_materials: Array<{ id: string; name: string }> | null } | null;
+    orders: { order_number: string } | null;
+  } | null;
 }
 
-const PROOF_COLUMNS = "*, drafts!inner(customer_id, orders:orders!drafts_order_fk(order_number))";
+// Each proof row joins its job (owner, print options), the product and, once paid, the order number.
+const PROOF_COLUMNS =
+  "*, drafts!inner(customer_id, options, products(name, default_bleed_mm, allowed_materials), orders:orders!drafts_order_fk(order_number))";
+
+/** The real print specification of the job a proof belongs to (shown in the proof dialog). */
+function proofSpec(row: ProofRow): Proof["spec"] {
+  const options = row.drafts?.options;
+  const product = row.drafts?.products;
+  if (!options?.widthMm || !options?.heightMm) return undefined;
+  const materials = product?.allowed_materials ?? [];
+  const material = materials.find((m) => m.id === options.materialId) ?? materials[0];
+  return {
+    productName: product?.name,
+    widthMm: options.widthMm,
+    heightMm: options.heightMm,
+    bleedMm: options.bleedMm ?? product?.default_bleed_mm,
+    materialName: material?.name,
+  };
+}
 
 function toProof(row: ProofRow): Proof {
   return {
@@ -39,6 +62,7 @@ function toProof(row: ProofRow): Proof {
     approved_by: row.approved_by_email,
     approved_at: row.approved_at,
     created_at: row.created_at,
+    spec: proofSpec(row),
   };
 }
 

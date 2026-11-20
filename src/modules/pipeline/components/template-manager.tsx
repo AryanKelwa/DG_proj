@@ -53,7 +53,8 @@ const blankRect = (): TemplateElement => ({ kind: "rect", x: 0, y: 0, w: 1, h: 0
  * Positions and sizes are fractions of the product's safe area, so a template
  * fits every size of a product and can never place content outside it.
  */
-export function TemplateManager({ products }: { products: Array<{ id: string; name: string; division_slug?: string }> }) {
+export function TemplateManager() {
+  const [products, setProducts] = useState<Array<{ id: string; name: string; division_slug?: string }>>([]);
   const [templates, setTemplates] = useState<DesignTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -70,8 +71,13 @@ export function TemplateManager({ products }: { products: Array<{ id: string; na
     else setError(data.error || "Could not load templates.");
   }, []);
 
+  // Templates and the product list (for the "product" picker) load when the tab opens.
   useEffect(() => {
     load();
+    fetch("/api/admin/products")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setProducts(data?.products || []))
+      .catch(() => undefined);
   }, [load]);
 
   const updateEl = (i: number, patch: Partial<TemplateElement>) =>
