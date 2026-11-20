@@ -539,9 +539,10 @@ export function DesignerPageView({
 
                 <div className="flex items-center gap-2">
                   <Button
+                    variant="cta"
                     size="sm"
                     onClick={handleOpenProofModal}
-                    className="font-semibold shadow-glow text-xs"
+                    className="font-semibold text-xs"
                   >
                     <Eye className="w-3.5 h-3.5 mr-1.5" />
                     Generate Proof & Preview

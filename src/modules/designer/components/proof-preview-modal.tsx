@@ -114,7 +114,8 @@ export function ProofPreviewModal({
             size="sm"
             onClick={onApprove}
             disabled={isApproving || !proofDataUrl}
-            className="font-semibold text-xs shadow-glow bg-emerald-600 hover:bg-emerald-700 text-white"
+            variant="cta"
+            className="font-semibold text-xs"
           >
             {isApproving ? (
               <span className="flex items-center gap-1.5">
