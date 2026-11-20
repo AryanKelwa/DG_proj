@@ -374,7 +374,7 @@ export function ProductionDashboardView() {
 
       {/* ORDER DETAIL MODAL (PRD § 11 Capability 02) */}
       {selectedOrderDetail && (
-        <OrderDetailPanel initialOrder={selectedOrderDetail} onClose={() => setSelectedOrderDetail(null)} />
+        <OrderDetailPanel initialOrder={selectedOrderDetail} onClose={() => setSelectedOrderDetail(null)} onOrderChanged={fetchOrders} />
       )}
     </div>
   );
