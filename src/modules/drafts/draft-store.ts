@@ -260,16 +260,10 @@ export async function updateDraft(
   const draft = await getDraft(draftId);
   if (!draft) throw new Error(`Draft ${draftId} not found`);
 
-  // The update and its audit event are independent writes, so they run together.
   const columns = toDraftColumns(updates);
-  await Promise.all([
-    Object.keys(columns).length > 0
-      ? db().from("drafts").update(columns).eq("id", draftId).then((res) => unwrap(res, "Update draft"))
-      : Promise.resolve(),
-    logEvent(draftId, actor, actionLabel, draft.status, updates.status ?? draft.status, {
-      updates: Object.keys(updates),
-    }),
-  ]);
+  if (Object.keys(columns).length > 0) {
+    unwrap(await db().from("drafts").update(columns).eq("id", draftId), "Update draft");
+  }
 
   // (Re)render the proof for the current version when the draft enters review, or
   // when its artwork changes while under review, so the stored proof always shows
@@ -278,10 +272,17 @@ export async function updateDraft(
   const artworkChanged =
     updates.designJson !== undefined || updates.uploadedFileRef !== undefined || updates.csvFileRef !== undefined;
   const hasCurrentProof = updated.proofs.some((p) => p.version === updated.proofVersion);
-  if (updated.status === "proof_pending" && (!hasCurrentProof || artworkChanged)) {
-    const proof = await generateDraftProof(updated, updated.proofVersion || 1);
-    await saveProofRecord(draftId, proof);
-  }
+  const needsProof = updated.status === "proof_pending" && (!hasCurrentProof || artworkChanged);
+
+  // The update has succeeded, so its audit event and the proof render can run together.
+  await Promise.all([
+    logEvent(draftId, actor, actionLabel, draft.status, updates.status ?? draft.status, {
+      updates: Object.keys(updates),
+    }),
+    needsProof
+      ? generateDraftProof(updated, updated.proofVersion || 1).then((proof) => saveProofRecord(draftId, proof))
+      : Promise.resolve(),
+  ]);
 
   return (await getDraft(draftId))!;
 }
