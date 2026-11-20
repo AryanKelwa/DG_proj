@@ -32,4 +32,17 @@ test.describe("Order workflow rules", () => {
     });
     expect(notOwner.status()).toBe(404);
   });
+
+  test("staff can view a customer's job but only the customer can change or approve it", async ({ request }) => {
+    const headers = { Authorization: `Bearer ${await apiToken(request, TEST_USERS.admin)}` };
+    const order = (await (await request.get("/api/admin/orders/W2P-2026-00302", { headers })).json()).order;
+    expect(order.draft_id).toBeTruthy();
+
+    const view = await request.get(`/api/drafts/${order.draft_id}`, { headers });
+    expect(view.status()).toBe(200);
+
+    const approve = await request.post(`/api/drafts/${order.draft_id}/approve-proof`, { headers });
+    expect(approve.status()).toBe(403);
+    expect((await approve.json()).error).toMatch(/only the customer/i);
+  });
 });

@@ -178,6 +178,8 @@ export interface Proof {
   /** Print specification of the job this proof belongs to, when known. */
   spec?: {
     productName?: string;
+    /** Used to reopen an unpaid job in the designer. */
+    productSlug?: string;
     widthMm: number;
     heightMm: number;
     bleedMm?: number;

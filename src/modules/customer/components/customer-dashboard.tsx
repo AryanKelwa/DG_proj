@@ -73,7 +73,9 @@ export function CustomerDashboardView() {
   };
 
   useEffect(() => {
-    if (user) {
+    // Staff have no customer orders; the shared APIs would return every customer's
+    // records to an admin, so the customer dashboard never loads them for one.
+    if (user && role !== "admin") {
       fetchCustomerData();
     }
   }, [user, role]);
@@ -208,6 +210,20 @@ export function CustomerDashboardView() {
             <Link href="/signup">Create New Account</Link>
           </Button>
         </div>
+      </div>
+    );
+  }
+
+  if (role === "admin") {
+    return (
+      <div className="max-w-md mx-auto my-16 p-8 rounded-2xl border bg-card text-center space-y-4" data-testid="dashboard-admin-notice">
+        <h2 className="text-2xl font-bold font-heading">This is the customer area</h2>
+        <p className="text-sm text-muted-foreground">
+          You are signed in as staff. Orders, proofs and change requests from all customers are in the production console.
+        </p>
+        <Button asChild>
+          <Link href="/production">Open the production console</Link>
+        </Button>
       </div>
     );
   }
@@ -392,6 +408,12 @@ export function CustomerDashboardView() {
             setTimeout(() => setReorderSuccess(null), 5000);
           }}
           onClose={() => setSelectedProofForReview(null)}
+          // Unpaid job (its "order id" is still the job id): the customer edits it in the designer.
+          editDesignHref={
+            UUID_PATTERN.test(selectedProofForReview.order_id) && selectedProofForReview.spec?.productSlug
+              ? `/designer/${selectedProofForReview.spec.productSlug}?draft=${selectedProofForReview.order_id}`
+              : undefined
+          }
         />
       )}
     </div>

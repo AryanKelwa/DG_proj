@@ -166,7 +166,7 @@ export function ProductionDashboardView() {
           The production shop-floor console requires an authenticated administrator session. You are currently logged in as a {role}.
         </p>
         <Link href="/login?redirect=/production">
-          <Button className="bg-[#FF5A1F] hover:bg-[#E0480F] text-white">
+          <Button className="bg-flame-500 hover:bg-flame-600 text-white">
             Sign in as Administrator
           </Button>
         </Link>

@@ -52,7 +52,7 @@ export function OrderDetailPanel({ initialOrder, onClose, onAction }: OrderDetai
       <div className="bg-white rounded-xl max-w-2xl w-full p-6 shadow-2xl my-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-4 border-b border-neutral-200">
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-[#FF5A1F]">
+            <span className="text-xs font-bold uppercase tracking-wider text-flame-600">
               Order Record
             </span>
             <h3 className="text-xl font-extrabold text-neutral-900">

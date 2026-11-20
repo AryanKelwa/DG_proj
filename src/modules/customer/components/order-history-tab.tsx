@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ShoppingBag, Receipt, RotateCcw, PencilLine, X } from "lucide-react";
 import { formatINR } from "@/modules/pricing/gst";
 import type { Order } from "@/types/database";
+import { STAGE_BADGE } from "@/modules/orders/order-workflow";
 
 /**
  * Customer → Order history (PRD § 08, § 09, § 10): every order with its status in
@@ -150,14 +151,6 @@ export function OrderHistoryTab({ orders, reorderingOrder, handleReorder, onOrde
       ) : (
         <div className="space-y-4">
           {orders.map((ord) => {
-            const stageColors: Record<string, string> = {
-              QUOTE: "bg-gray-100 text-gray-800",
-              ORDER: "bg-blue-100 text-blue-800",
-              ARTWORK: "bg-purple-100 text-purple-800",
-              PROOF: "bg-amber-100 text-amber-800 font-semibold",
-              PRODUCTION: "bg-orange-100 text-orange-800 font-semibold",
-              COMPLETED: "bg-emerald-100 text-emerald-800 font-semibold",
-            };
 
             return (
               <Card key={ord.id} className="p-6 hover-lift">
@@ -167,7 +160,7 @@ export function OrderHistoryTab({ orders, reorderingOrder, handleReorder, onOrde
                       <span className="font-mono font-bold text-base text-foreground">
                         {ord.order_number}
                       </span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono ${stageColors[ord.pipeline_stage] || ""}`}>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono ${STAGE_BADGE[ord.pipeline_stage] || ""}`}>
                         {ord.pipeline_stage}
                       </span>
                       <Badge variant="outline" className="text-[10px] font-mono text-emerald-600 border-emerald-300">

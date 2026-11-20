@@ -43,7 +43,9 @@ export async function PATCH(
     if (!transition.valid) {
       return NextResponse.json({ error: transition.error }, { status: 400 });
     }
-    const manualRule = checkManualStageChange(current.pipeline_stage, stage as PipelineStage, typeof notes === "string" ? notes : undefined);
+    const manualRule = checkManualStageChange(current.pipeline_stage, stage as PipelineStage, typeof notes === "string" ? notes : undefined, {
+      changeRequested: !!current.change_request,
+    });
     if (manualRule) {
       return NextResponse.json({ error: manualRule }, { status: 400 });
     }

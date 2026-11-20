@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { ProofRecord } from "../types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,12 @@ interface ProofReviewDialogProps {
   onApprove: (proofId: string, approvedBy: string) => void;
   onRequestChanges: (proofId: string, feedback: string) => void;
   onClose: () => void;
+  /**
+   * Set for a proof of an unpaid job: the customer changes it themselves in the
+   * designer (PRD § 06), so the dialog offers "Edit my design" instead of a change
+   * request to pre-press, which applies only to paid orders.
+   */
+  editDesignHref?: string;
 }
 
 export function ProofReviewDialog({
@@ -25,6 +32,7 @@ export function ProofReviewDialog({
   onApprove,
   onRequestChanges,
   onClose,
+  editDesignHref,
 }: ProofReviewDialogProps) {
   const [feedback, setFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -229,14 +237,22 @@ export function ProofReviewDialog({
 
           {proof.status === "pending_review" && viewMode === "inspect" && (
             <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setViewMode("revise")}
-                className="text-xs font-mono text-destructive hover:bg-destructive/10 hover:border-destructive/40"
-              >
-                Request Changes
-              </Button>
+              {editDesignHref ? (
+                <Button asChild variant="outline" size="sm" className="text-xs">
+                  <Link href={editDesignHref} data-testid="proof-edit-design">
+                    Edit my design
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setViewMode("revise")}
+                  className="text-xs font-mono text-destructive hover:bg-destructive/10 hover:border-destructive/40"
+                >
+                  Request Changes
+                </Button>
+              )}
 
               <Button
                 size="sm"

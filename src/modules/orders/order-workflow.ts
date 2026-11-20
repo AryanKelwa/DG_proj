@@ -145,10 +145,17 @@ export const MIN_NOTE_LENGTH = 5;
  * or null when the move is allowed. (Transition order and production readiness are
  * checked separately by validateStageTransition / checkStagePreconditions.)
  */
-export function checkManualStageChange(from: PipelineStage, to: PipelineStage, notes: string | undefined): string | null {
+export function checkManualStageChange(
+  from: PipelineStage,
+  to: PipelineStage,
+  notes: string | undefined,
+  options: { changeRequested?: boolean } = {}
+): string | null {
   if (to === "PROOF") return "Proofs are sent with 'Send revised proof', which creates the new proof version for the customer.";
   if (to === "QUOTE") return "An order cannot be moved back to QUOTE.";
   if (from === "QUOTE") return "An order leaves QUOTE only when Stripe confirms the payment.";
+  if (from === "PROOF" && to === "PRODUCTION") return "Only the customer can approve the proof; the order moves to production when they do.";
+  if (to === "PRODUCTION" && options.changeRequested) return "The customer has asked for changes. Send a revised proof first.";
   const needsNote = to === "COMPLETED" || (from === "PROOF" && to === "ARTWORK") || (from === "ARTWORK" && to === "ORDER");
   if (needsNote && (notes ?? "").trim().length < MIN_NOTE_LENGTH) {
     return to === "COMPLETED"
@@ -157,3 +164,13 @@ export function checkManualStageChange(from: PipelineStage, to: PipelineStage, n
   }
   return null;
 }
+
+/** Badge colours per stage, shared by the customer dashboard and the admin console. */
+export const STAGE_BADGE: Record<PipelineStage, string> = {
+  QUOTE: "bg-neutral-100 text-neutral-700",
+  ORDER: "bg-sky-100 text-sky-800",
+  ARTWORK: "bg-violet-100 text-violet-800",
+  PROOF: "bg-amber-100 text-amber-800",
+  PRODUCTION: "bg-orange-100 text-orange-800",
+  COMPLETED: "bg-emerald-100 text-emerald-800",
+};

@@ -51,6 +51,12 @@ describe("Order workflow (PRD § 08, § 11)", () => {
     assert.equal(checkManualStageChange("ORDER", "ARTWORK", undefined), null);
   });
 
+  it("leaves proof approval to the customer and holds production while a change is requested", () => {
+    assert.ok(checkManualStageChange("PROOF", "PRODUCTION", "note text"));
+    assert.ok(checkManualStageChange("ARTWORK", "PRODUCTION", undefined, { changeRequested: true }));
+    assert.equal(checkManualStageChange("ARTWORK", "PRODUCTION", undefined), null);
+  });
+
   it("never lets staff enter PROOF or leave QUOTE by hand", () => {
     for (const from of ["ARTWORK", "ORDER"] as PipelineStage[]) assert.ok(checkManualStageChange(from, "PROOF", "note text"));
     assert.ok(checkManualStageChange("QUOTE", "ORDER", "paid in cash"));

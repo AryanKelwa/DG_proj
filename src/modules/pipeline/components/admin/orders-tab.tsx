@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Search, Download, CheckCircle2, AlertCircle, RefreshCw, Eye, PackageCheck, MessageSquareWarning } from "lucide-react";
 import { formatINR } from "@/modules/pricing/gst";
-import { workflowActions, waitingFor, type WorkflowAction } from "@/modules/orders/order-workflow";
+import { workflowActions, waitingFor, STAGE_BADGE, type WorkflowAction } from "@/modules/orders/order-workflow";
 import type { AdminOrder } from "./types";
 
 
@@ -194,7 +194,7 @@ export function OrdersTab({
       {/* Orders Table & State Handling */}
       {isOrdersLoading ? (
         <div className="py-12 text-center text-neutral-500">
-          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-[#FF5A1F]" />
+          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-flame-600" />
           Loading persistent orders from database...
         </div>
       ) : ordersError ? (
@@ -269,15 +269,7 @@ export function OrdersTab({
 
                       {/* Pipeline Stage */}
                       <td className="py-4 px-4">
-                        <Badge
-                          className={`text-[11px] font-semibold tracking-wide ${
-                            ord.pipeline_stage === "COMPLETED"
-                              ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-100"
-                              : ord.pipeline_stage === "PRODUCTION"
-                              ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
-                              : "bg-neutral-100 text-neutral-800 hover:bg-neutral-100"
-                          }`}
-                        >
+                        <Badge className={`text-[11px] font-semibold tracking-wide border-transparent ${STAGE_BADGE[ord.pipeline_stage]}`}>
                           {ord.pipeline_stage}
                         </Badge>
                         {ord.change_request && (
@@ -380,7 +372,7 @@ export function OrdersTab({
                             disabled={!ord.isReadyForProduction}
                             className={`h-8 px-2 text-xs text-white ${
                               ord.isReadyForProduction
-                                ? "bg-[#FF5A1F] hover:bg-[#E0480F]"
+                                ? "bg-flame-500 hover:bg-flame-600"
                                 : "bg-neutral-300 cursor-not-allowed text-neutral-500"
                             }`}
                             title={ord.isReadyForProduction ? "Download 300 DPI Production Package" : ord.notReadyReason || "Locked"}
