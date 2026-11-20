@@ -9,6 +9,7 @@ import { ShoppingBag, Receipt, RotateCcw, PencilLine, X } from "lucide-react";
 import { formatINR } from "@/modules/pricing/gst";
 import type { Order } from "@/types/database";
 import { STAGE_BADGE } from "@/modules/orders/order-workflow";
+import { OrderTracker } from "./order-tracker";
 
 /**
  * Customer → Order history (PRD § 08, § 09, § 10): every order with its status in
@@ -22,28 +23,6 @@ interface OrderHistoryTabProps {
   handleReorder: (order: Order) => void;
   /** Reloads orders and proofs after a change request. */
   onOrdersChanged: () => void;
-}
-
-/** What the customer should know about each stage. */
-function statusText(order: Order): string {
-  switch (order.pipeline_stage) {
-    case "QUOTE":
-      return order.payment_status === "cancelled" ? "Checkout was cancelled." : "Awaiting payment. Complete checkout to place the order.";
-    case "ORDER":
-      return "Order received. Our pre-press team will check your artwork next.";
-    case "ARTWORK":
-      return order.change_request
-        ? "Your change request is with pre-press. You will receive a revised proof to approve."
-        : "Pre-press is checking your artwork before printing.";
-    case "PROOF":
-      return "A revised proof is waiting for your approval in the Proofs tab.";
-    case "PRODUCTION":
-      return "Your job is being printed.";
-    case "COMPLETED":
-      return "Completed and dispatched.";
-    default:
-      return "";
-  }
 }
 
 /** Changes can be requested on a paid order until it goes to print. */
@@ -168,8 +147,6 @@ export function OrderHistoryTab({ orders, reorderingOrder, handleReorder, onOrde
                       </Badge>
                     </div>
 
-                    <p className="text-sm text-foreground/80" data-testid="order-status-text">{statusText(ord)}</p>
-
                     <div className="text-xs text-muted-foreground font-mono space-y-0.5">
                       <div>Placed: {new Date(ord.created_at).toLocaleDateString("en-IN", { dateStyle: "medium" })}</div>
                       <div data-testid="order-shipping-address">
@@ -232,6 +209,11 @@ export function OrderHistoryTab({ orders, reorderingOrder, handleReorder, onOrde
                       </Button>
                     )}
                   </div>
+                </div>
+
+                {/* Where the order is, like parcel tracking */}
+                <div className="mt-5 pt-5 border-t border-border">
+                  <OrderTracker order={ord} />
                 </div>
               </Card>
             );

@@ -97,16 +97,9 @@ export function ProofReviewDialog({
               className="max-h-72 object-contain rounded shadow"
             />
 
-            {/* Repeating Diagonal Watermark (§ 08) */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-              <span className="text-white/20 text-3xl font-mono font-extrabold uppercase tracking-widest rotate-[-20deg]">
-                W2P PROOF · v{proof.version}
-              </span>
-            </div>
-
             <div className="absolute top-3 left-3 flex gap-2">
               <Badge variant="industrial" className="text-xs">
-                v{proof.version} INSPECTION
+                Version {proof.version}
               </Badge>
               {proof.status === "approved" ? (
                 <Badge variant="success" className="text-xs">

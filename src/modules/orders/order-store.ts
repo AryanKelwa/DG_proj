@@ -142,6 +142,29 @@ function toOrder(row: OrderRow): Order {
   };
 }
 
+/**
+ * The customer's view of their own order. Internal details stay on the server:
+ * staff email addresses and internal notes in the stage history, the payment
+ * session id, the accounting (Xero) payload and internal order notes. Each history
+ * entry keeps only the stage change and its time, attributed to "You", "Payment"
+ * or "W2P team"; the dispatch note on completion is kept, since it is written for
+ * the customer (courier and tracking number) and emailed to them anyway.
+ */
+export function toCustomerOrder(order: Order, customerEmail: string): Order {
+  const { stripe_session_id: _session, xero_invoice_data: _xero, notes: _notes, ...rest } = order; // eslint-disable-line @typescript-eslint/no-unused-vars
+  return {
+    ...rest,
+    status_history: (order.status_history ?? []).map((h) => ({
+      from: h.from,
+      to: h.to,
+      timestamp: h.timestamp,
+      changed_by:
+        h.changed_by?.toLowerCase() === customerEmail.toLowerCase() ? "You" : h.changed_by === "stripe" ? "Payment" : "W2P team",
+      notes: h.to === "COMPLETED" && h.from === "PRODUCTION" ? h.notes : undefined,
+    })),
+  };
+}
+
 /** Reserves the next order number from the database sequence (never random). */
 export async function reserveOrderNumber(): Promise<string> {
   const value = unwrap(await db().rpc("next_order_number"), "Reserve order number");
