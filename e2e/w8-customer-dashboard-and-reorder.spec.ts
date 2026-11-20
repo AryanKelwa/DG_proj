@@ -27,7 +27,7 @@ test.describe("W8. Customer Dashboard & 1-Click Reorder (PRD §09, §10)", () =>
     const proofsTabBtn = page.locator("button:has-text('Active Proofs')").first();
     await proofsTabBtn.click();
     await expect(page.getByRole("heading", { name: "Your proofs", exact: true })).toBeVisible();
-    await expect(page.locator("text=v1").first()).toBeVisible();
+    await expect(page.getByTestId("proof-version").first()).toContainText(/Version \d+/);
 
     // Module 3: Saved designs
     const designsTabBtn = page.locator("button:has-text('Saved Designs')").first();
