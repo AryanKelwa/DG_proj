@@ -494,6 +494,10 @@ export function CustomerDashboardView() {
                           <Badge variant="success" className="text-xs">
                             APPROVED & UNLOCKED
                           </Badge>
+                        ) : prf.status === "superseded" ? (
+                          <Badge variant="outline" className="text-xs bg-white/80">
+                            REPLACED BY NEWER VERSION
+                          </Badge>
                         ) : prf.status === "changes_requested" ? (
                           <Badge variant="destructive" className="text-xs">
                             CHANGES REQUESTED
@@ -545,7 +549,7 @@ export function CustomerDashboardView() {
                         className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                        {prf.status === "approved" ? "View Sign-Off" : "Review & Sign"}
+                        {prf.status === "approved" ? "View Sign-Off" : prf.status === "pending_review" ? "Review & Sign" : "View Proof"}
                       </Button>
                     </div>
                   </div>

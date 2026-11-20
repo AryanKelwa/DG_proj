@@ -1,7 +1,7 @@
 "use client";
 
 import { VariableDataAttach } from "@/modules/variable-data/components/variable-data-attach";
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Product } from "@/types/database";
@@ -15,6 +15,7 @@ import {
 } from "../types";
 import { calculatePrintBounds, computeFittedFontSize } from "../utils/print-constraints";
 import { DesignerToolbar } from "./designer-toolbar";
+import { applyTemplate, builtInTemplatesFor, DesignTemplate } from "../templates";
 import { DirectUploadView } from "./direct-upload-view";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -84,37 +85,21 @@ export function DesignerPageView({
   // Issue 2: Editor-only "Show guides" toggle (default on) (§ 06, § 08)
   const [showGuides, setShowGuides] = useState<boolean>(true);
 
-  // Initial Sample Elements
-  const [elements, setElements] = useState<CanvasElement[]>(savedCanvas?.elements ?? [
-    {
-      id: "el-brand-title",
-      type: "text",
-      x: 50,
-      y: 60,
-      text: product.name.toUpperCase(),
-      fontSize: 22,
-      fontFamily: "Plus Jakarta Sans",
-      fill: "#111318",
-      align: "left",
-      isBold: true,
-      rotation: 0,
-      opacity: 1,
-    },
-    {
-      id: "el-brand-subtitle",
-      type: "text",
-      x: 50,
-      y: 100,
-      text: "CUSTOM MANUFACTURING SPEC",
-      fontSize: 12,
-      fontFamily: "JetBrains Mono",
-      fill: "#FF5A1F",
-      align: "left",
-      isBold: true,
-      rotation: 0,
-      opacity: 1,
-    },
-  ]);
+  // New designs start from the division's first template (PRD § 06), always inside the safe area.
+  const [elements, setElements] = useState<CanvasElement[]>(() => {
+    if (savedCanvas?.elements) return savedCanvas.elements;
+    const starter = builtInTemplatesFor(product.division_slug)[0];
+    return starter ? applyTemplate(starter, calculatePrintBounds(dimensions, 700, 520)) : [];
+  });
+  const [templates, setTemplates] = useState<DesignTemplate[]>(() => builtInTemplatesFor(product.division_slug));
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/templates?division=${encodeURIComponent(product.division_slug)}&product=${encodeURIComponent(product.id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (!cancelled && data?.templates?.length) setTemplates(data.templates); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [product.division_slug, product.id]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [proofModalOpen, setProofModalOpen] = useState<boolean>(false);
@@ -127,6 +112,14 @@ export function DesignerPageView({
   const bounds = useMemo(() => {
     return calculatePrintBounds(dimensions, 700, 520);
   }, [dimensions]);
+
+  const handleApplyTemplate = (templateId: string) => {
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
+    if (elements.length > 0 && !window.confirm(`Replace the current design with the "${tpl.name}" template?`)) return;
+    setElements(applyTemplate(tpl, bounds));
+    setSelectedId(null);
+  };
 
   // Add Text with Placeholder Fitting Rules (§ 04)
   const handleAddText = (type: "heading" | "body") => {
@@ -472,6 +465,20 @@ export function DesignerPageView({
                     <Eye className="w-3 h-3 text-brand-500" />
                     <span>{showGuides ? "Guides ON" : "Guides OFF"}</span>
                   </Button>
+                  {templates.length > 0 && (
+                    <select
+                      aria-label="Start from a template"
+                      data-testid="template-select"
+                      value=""
+                      onChange={(e) => handleApplyTemplate(e.target.value)}
+                      className="h-7 rounded-md border border-border bg-background px-2 text-xs"
+                    >
+                      <option value="">Templates…</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  )}
                   <span>Scale: {bounds.scaleFactor.toFixed(2)} px/mm</span>
                 </div>
               </div>

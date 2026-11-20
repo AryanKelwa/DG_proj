@@ -104,6 +104,10 @@ export function ProofReviewDialog({
                 <Badge variant="success" className="text-xs">
                   APPROVED FOR MANUFACTURE
                 </Badge>
+              ) : proof.status === "superseded" ? (
+                <Badge variant="outline" className="text-xs bg-white/80">
+                  REPLACED BY NEWER VERSION
+                </Badge>
               ) : proof.status === "changes_requested" ? (
                 <Badge variant="destructive" className="text-xs">
                   REVISION PENDING
@@ -223,7 +227,7 @@ export function ProofReviewDialog({
             Close Viewer
           </Button>
 
-          {proof.status !== "approved" && viewMode === "inspect" && (
+          {proof.status === "pending_review" && viewMode === "inspect" && (
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"

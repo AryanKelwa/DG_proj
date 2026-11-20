@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TemplateManager } from "./template-manager";
 import {
   Search,
   Download,
@@ -35,7 +36,7 @@ export function ProductionDashboardView() {
   const { role, user, isLoading } = useAuth();
 
   // Active Navigation Tab: orders | users | products | reports | archive
-  const [activeTab, setActiveTab] = useState<"orders" | "users" | "products" | "reports" | "archive">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "users" | "products" | "templates" | "reports" | "archive">("orders");
 
   // Orders State
   const [orders, setOrders] = useState<any[]>([]);
@@ -436,6 +437,18 @@ export function ProductionDashboardView() {
           >
             <Settings className="w-3.5 h-3.5 inline mr-1" />
             Products & Tiers
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("templates");
+              if (productsList.length === 0) fetchProducts();
+            }}
+            data-testid="admin-templates-tab"
+            className={`px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap transition-colors ${
+              activeTab === "templates" ? "bg-white text-neutral-900 shadow-sm font-semibold" : "text-neutral-600 hover:text-neutral-900"
+            }`}
+          >
+            Design Templates
           </button>
           <button
             onClick={() => {
@@ -1118,6 +1131,8 @@ export function ProductionDashboardView() {
       )}
 
       {/* TAB 4: REPORTS & ANALYTICS (PRD § 11 Capability 05) */}
+      {activeTab === "templates" && <TemplateManager products={productsList} />}
+
       {activeTab === "reports" && (
         <div className="space-y-6">
           <Card className="border-neutral-200 shadow-sm">
@@ -1129,7 +1144,7 @@ export function ProductionDashboardView() {
                     Revenue computed strictly from confirmed payments (&apos;paid&apos;). Pending and cancelled orders are excluded.
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Input
                     type="date"
                     value={dateFrom}
@@ -1143,6 +1158,12 @@ export function ProductionDashboardView() {
                     onChange={(e) => setDateTo(e.target.value)}
                     className="h-8 text-xs w-36"
                   />
+                  <Button asChild size="sm" variant="outline" className="h-8 text-xs" data-testid="xero-export-csv">
+                    <a href={`/api/admin/accounting/export?format=csv${dateFrom ? `&from=${dateFrom}` : ""}${dateTo ? `&to=${dateTo}` : ""}`}>Xero CSV</a>
+                  </Button>
+                  <Button asChild size="sm" variant="outline" className="h-8 text-xs">
+                    <a href={`/api/admin/accounting/export?format=json${dateFrom ? `&from=${dateFrom}` : ""}${dateTo ? `&to=${dateTo}` : ""}`}>Xero JSON</a>
+                  </Button>
                   <Button size="sm" onClick={() => fetchReports()} variant="outline" className="h-8 px-2 text-xs">
                     Filter
                   </Button>

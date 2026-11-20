@@ -33,7 +33,7 @@ function toProof(row: ProofRow): Proof {
     order_item_id: row.draft_id,
     order_id: row.drafts?.orders?.order_number ?? row.draft_id,
     version_number: row.version,
-    status: (row.status === "superseded" ? "changes_requested" : row.status) as ProofStatus,
+    status: row.status as ProofStatus,
     watermarked_preview_url: row.rendered_url,
     customer_feedback: row.feedback,
     approved_by: row.approved_by_email,

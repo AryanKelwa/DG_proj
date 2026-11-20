@@ -159,7 +159,7 @@ export interface OrderItem {
   created_at: string;
 }
 
-export type ProofStatus = "pending_review" | "approved" | "changes_requested";
+export type ProofStatus = "pending_review" | "approved" | "changes_requested" | "superseded";
 
 export interface Proof {
   id: string;
