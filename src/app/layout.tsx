@@ -12,12 +12,12 @@ export const metadata: Metadata = {
 /*
  * Google Fonts, linked from <head> rather than @import-ed from CSS: the browser can
  * start fetching them immediately instead of after globals.css has downloaded.
- * Only the weights the UI uses are requested. Plus Jakarta Sans and JetBrains Mono
+ * Only the weights the UI uses are requested; Fraunces (serif) is the heading face. Plus Jakarta Sans and JetBrains Mono
  * are also offered in the designer, so the canvas keeps their real family names.
  */
 const FONTS_URL =
   "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800" +
-  "&family=Outfit:wght@500;600;700;800" +
+  "&family=Fraunces:opsz,wght@9..144,500..800" +
   "&family=Plus+Jakarta+Sans:ital,wght@0,400;0,700;1,400;1,700" +
   "&family=JetBrains+Mono:wght@400;500;600;700&display=swap";
 

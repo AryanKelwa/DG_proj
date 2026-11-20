@@ -258,7 +258,7 @@ function CheckoutContent() {
             </div>
           )}
 
-          <Button type="submit" size="lg" className="w-full" disabled={isProcessing} data-testid="pay-button">
+          <Button type="submit" size="lg" variant="cta" className="w-full" disabled={isProcessing} data-testid="pay-button">
             {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> : <Lock className="w-4 h-4 mr-2" aria-hidden="true" />}
             Pay {pricing.formatted.total} securely with Stripe
           </Button>
