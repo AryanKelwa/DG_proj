@@ -140,7 +140,7 @@ export function DesignerPageView({
     const newElement: TextCanvasElement = {
       id: `text-${Date.now()}`,
       type: "text",
-      x: bounds.safeOffsetX + 20,
+      x: bounds.safeOffsetX,
       y: bounds.safeOffsetY + (elements.length * 30) % 200 + 20,
       text: sampleText,
       fontSize: fittedSize,
@@ -182,21 +182,33 @@ export function DesignerPageView({
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-      if (typeof ev.target?.result === "string") {
+      const src = ev.target?.result;
+      if (typeof src !== "string") return;
+      // Keep the logo's own proportions and fit it inside the safe area.
+      const probe = new window.Image();
+      probe.onload = () => {
+        const natW = probe.naturalWidth || 1;
+        const natH = probe.naturalHeight || 1;
+        const maxW = Math.min(bounds.safeWidth, Math.max(80, bounds.safeWidth * 0.5));
+        const maxH = Math.min(bounds.safeHeight, Math.max(80, bounds.safeHeight * 0.5));
+        const scale = Math.min(maxW / natW, maxH / natH, 1);
+        const width = Math.max(10, Math.round(natW * scale));
+        const height = Math.max(10, Math.round(natH * scale));
         const newImg: ImageCanvasElement = {
           id: `img-${Date.now()}`,
           type: "image",
-          src: ev.target.result,
-          x: bounds.safeOffsetX + 40,
-          y: bounds.safeOffsetY + 40,
-          width: 120,
-          height: 120,
+          src,
+          x: bounds.safeOffsetX + (bounds.safeWidth - width) / 2,
+          y: bounds.safeOffsetY + (bounds.safeHeight - height) / 2,
+          width,
+          height,
           rotation: 0,
           opacity: 1,
         };
-        setElements([...elements, newImg]);
+        setElements((prev) => [...prev, newImg]);
         setSelectedId(newImg.id);
-      }
+      };
+      probe.src = src;
     };
     reader.readAsDataURL(file);
   };
@@ -290,6 +302,8 @@ export function DesignerPageView({
   // Proof preview (§ 06, § 08): the server renders and stores the proof from the saved
   // artwork; the modal shows that stored proof, so what is approved is what is printed.
   const handleOpenProofModal = async () => {
+    // Selection handles are editor chrome, never part of the proof.
+    setSelectedId(null);
     setProofDataUrl(null);
     setArtworkPreview(null);
     setProofError(null);
