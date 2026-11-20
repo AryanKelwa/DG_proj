@@ -1392,10 +1392,28 @@ export function ProductionDashboardView() {
                   </Badge>
                 </div>
                 <div className="text-xs text-neutral-600">
-                  Version: <span className="font-semibold">v{selectedOrderDetail.proof_version || selectedOrderDetail.approved_proof_version || 1}</span>
+                  Approved version:{" "}
+                  <span className="font-semibold">{selectedOrderDetail.approved_proof_version ? `v${selectedOrderDetail.approved_proof_version}` : "none yet"}</span>
                 </div>
-                <div className="text-xs text-neutral-500 mt-1">
-                  Approved by: {selectedOrderDetail.customer_email || "Customer"} · Locked against unapproved manufacturing
+                <div className="mt-2 space-y-1.5" data-testid="proof-log">
+                  {(selectedOrderDetail.proofLog || []).length === 0 && (
+                    <div className="text-xs text-neutral-500">No proofs issued yet.</div>
+                  )}
+                  {(selectedOrderDetail.proofLog || []).map((p: any) => (
+                    <div key={p.version} className="text-xs p-2 bg-neutral-50 rounded border border-neutral-200" data-testid="proof-log-entry">
+                      <div className="flex items-center justify-between gap-2">
+                        <a href={p.previewUrl} target="_blank" rel="noreferrer" className="font-semibold text-neutral-800 underline">v{p.version}</a>
+                        <Badge className={p.status === "approved" ? "bg-emerald-100 text-emerald-800" : p.status === "pending_review" ? "bg-amber-100 text-amber-800" : p.status === "changes_requested" ? "bg-red-100 text-red-800" : "bg-neutral-100 text-neutral-600"}>
+                          {String(p.status).replace("_", " ")}
+                        </Badge>
+                      </div>
+                      <div className="text-[11px] text-neutral-500 mt-0.5">Issued {new Date(p.createdAt).toLocaleString("en-IN")}</div>
+                      {p.approvedAt && (
+                        <div className="text-[11px] text-emerald-700">Approved by {p.approvedByEmail || "unknown"} on {new Date(p.approvedAt).toLocaleString("en-IN")}</div>
+                      )}
+                      {p.feedback && <div className="text-[11px] text-red-700">Change request: {p.feedback}</div>}
+                    </div>
+                  ))}
                 </div>
               </div>
 

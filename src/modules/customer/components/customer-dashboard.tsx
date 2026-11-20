@@ -523,6 +523,7 @@ export function CustomerDashboardView() {
                         <div className="p-3 rounded bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 text-emerald-800 dark:text-emerald-300 text-xs font-mono">
                           <span className="font-bold block">Approved for Manufacture:</span>
                           {new Date(prf.approved_at).toLocaleString("en-IN")}
+                          {prf.approved_by && <span className="block">by {prf.approved_by}</span>}
                         </div>
                       )}
                     </CardContent>

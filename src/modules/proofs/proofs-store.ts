@@ -93,3 +93,31 @@ export async function supersedeEarlierProofs(draftId: string, latestVersion: num
     "Supersede proofs"
   );
 }
+
+export interface ProofLogEntry {
+  version: number;
+  status: ProofStatus | "superseded";
+  feedback: string | null;
+  approvedByEmail: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  previewUrl: string;
+}
+
+/** Every proof version of a draft, oldest first: the approval/revision log. */
+export async function getProofLogForDraft(draftId: string): Promise<ProofLogEntry[]> {
+  if (!UUID_RE.test(draftId)) return [];
+  const rows = unwrap(
+    await db().from("draft_proofs").select("version, status, feedback, approved_by_email, approved_at, created_at, rendered_url").eq("draft_id", draftId).order("version"),
+    "Load proof log"
+  ) as { version: number; status: ProofLogEntry["status"]; feedback: string | null; approved_by_email: string | null; approved_at: string | null; created_at: string; rendered_url: string }[];
+  return rows.map((r) => ({
+    version: r.version,
+    status: r.status,
+    feedback: r.feedback,
+    approvedByEmail: r.approved_by_email,
+    approvedAt: r.approved_at,
+    createdAt: r.created_at,
+    previewUrl: r.rendered_url,
+  }));
+}
