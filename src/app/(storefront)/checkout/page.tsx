@@ -25,7 +25,7 @@ interface ProductSummary {
  */
 function CheckoutContent() {
   const searchParams = useSearchParams();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, role, isLoading: authLoading } = useAuth();
   const draftId = searchParams.get("draft");
   const cancelled = searchParams.get("cancelled") === "1";
 
@@ -170,6 +170,22 @@ function CheckoutContent() {
             <Button variant="outline">Create account</Button>
           </Link>
         </div>
+      </div>
+    );
+  }
+
+  // Staff accounts cannot buy; the server refuses it too.
+  if (role === "admin") {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4" data-testid="admin-checkout-blocked">
+        <Lock className="w-8 h-8 mx-auto text-brand-500" aria-hidden="true" />
+        <h1 className="text-2xl font-bold font-heading">Admins can&apos;t place orders</h1>
+        <p className="text-muted-foreground text-sm">
+          You are signed in as an administrator. To order, sign out and sign in with a customer account.
+        </p>
+        <Link href="/production">
+          <Button>Go to the production console</Button>
+        </Link>
       </div>
     );
   }
