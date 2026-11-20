@@ -345,7 +345,7 @@ export function CustomerDashboardView() {
 
       {/* TAB 1: ORDER HISTORY & 1-CLICK REORDER (§ 10 Module 2 & 5) */}
       {activeTab === "orders" && (
-        <OrderHistoryTab orders={orders} reorderingOrder={reorderingOrder} handleReorder={handleReorder} />
+        <OrderHistoryTab orders={orders} reorderingOrder={reorderingOrder} handleReorder={handleReorder} onOrdersChanged={fetchCustomerData} />
       )}
 
       {/* TAB 2: ACTIVE PROOFS & VERSION CONTROL (§ 10 Module 4 & § 08) */}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { safeSendNotificationEmail } from "@/modules/email/email-service";
 import { getAuthUser } from "@/lib/server-auth";
-import { getOrderById, updateOrderStageWithVersion, clearOrderApprovedProof } from "@/modules/orders/order-store";
+import { getOrderById, updateOrderStageWithVersion, clearOrderApprovedProof, setOrderChangeRequest } from "@/modules/orders/order-store";
 import { getProofById, getLatestProofForDraft, updateProof } from "@/modules/proofs/proofs-store";
 
 const RejectProofSchema = z.object({
@@ -48,6 +48,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { feedback } = validated.data;
     await updateProof(id, { status: "changes_requested", customer_feedback: feedback });
     await clearOrderApprovedProof(order.id);
+    // Shown to pre-press in the admin console until they send the revised proof.
+    await setOrderChangeRequest(order.id, feedback);
 
     const moved = await updateOrderStageWithVersion(
       order.order_number,
