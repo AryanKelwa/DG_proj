@@ -474,7 +474,7 @@ export function DesignerPageView({
               <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b text-xs font-mono text-muted-foreground">
                 <span className="font-semibold text-foreground flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-brand-500" />
-                  Visual Manufacturing Canvas
+                  Your design
                 </span>
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   {/* Editor-only "Show guides" toggle */}

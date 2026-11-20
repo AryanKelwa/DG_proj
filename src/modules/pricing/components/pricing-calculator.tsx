@@ -131,9 +131,9 @@ export function PricingCalculator({ products: PRODUCTS }: { products: ExtendedPr
         <CardHeader>
           <div className="flex items-center gap-2 text-xs font-mono font-semibold text-brand-500 uppercase">
             <Sliders className="w-3.5 h-3.5" />
-            <span>Interactive Parameter Matrix</span>
+            <span>Price calculator</span>
           </div>
-          <CardTitle className="text-2xl font-bold">Configure Your Job Specifications</CardTitle>
+          <CardTitle className="text-2xl font-bold">Choose your product, size and quantity</CardTitle>
           <CardDescription>
             Change dimensions, materials, and volume to see instant mathematical price updates.
           </CardDescription>
@@ -403,7 +403,7 @@ export function PricingCalculator({ products: PRODUCTS }: { products: ExtendedPr
         <div className="p-4 rounded-xl border border-border bg-card text-xs space-y-2 font-mono">
           <div className="font-semibold text-foreground flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-brand-500" />
-            <span>Manufacturing Print Specs:</span>
+            <span>Print details:</span>
           </div>
           <div className="text-muted-foreground space-y-1">
             <div>• Target Bleed Margin: +{selectedProduct.default_bleed_mm}mm</div>
