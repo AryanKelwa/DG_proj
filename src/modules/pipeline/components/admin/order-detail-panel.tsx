@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
@@ -18,23 +18,52 @@ interface OrderDetailPanelProps {
   /** The row clicked in the orders table. */
   initialOrder: AdminOrder;
   onClose: () => void;
+  /** Called after the order changed here (e.g. a revised proof moved it to PROOF), so the list can refresh. */
+  onOrderChanged?: () => void;
 }
 
-export function OrderDetailPanel({ initialOrder, onClose }: OrderDetailPanelProps) {
+export function OrderDetailPanel({ initialOrder, onClose, onOrderChanged }: OrderDetailPanelProps) {
   const [order, setOrder] = useState<AdminOrderDetail>(initialOrder);
+  const [isIssuingProof, setIsIssuingProof] = useState(false);
+  const [proofMessage, setProofMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  /** Loads the full order record (proof log, gate) for the order shown. */
+  const loadDetail = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/orders/${encodeURIComponent(initialOrder.order_number)}`);
+      const data = res.ok ? await res.json() : null;
+      if (data?.order) setOrder(data.order);
+    } catch {
+      // keep showing the list row if the detail call fails
+    }
+  }, [initialOrder.order_number]);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/admin/orders/${encodeURIComponent(initialOrder.order_number)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data?.order) setOrder(data.order);
-      })
-      .catch(() => undefined); // keep showing the list row if the detail call fails
-    return () => {
-      cancelled = true;
-    };
-  }, [initialOrder.order_number]);
+    loadDetail();
+  }, [loadDetail]);
+
+  /**
+   * Issues the next proof version (v+1) from the order's current artwork (PRD § 08).
+   * The server moves the order ARTWORK → PROOF, withdraws the earlier approval
+   * (production locks again) and emails the customer to review it.
+   */
+  const handleIssueRevisedProof = async () => {
+    if (!window.confirm(`Issue a new proof version for ${order.order_number}? Production stays locked until the customer approves it.`)) return;
+    setIsIssuingProof(true);
+    setProofMessage(null);
+    try {
+      const res = await fetch(`/api/admin/orders/${encodeURIComponent(order.order_number)}/proofs`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not issue the revised proof.");
+      setProofMessage({ ok: true, text: `Proof v${data.version} issued. The order is now at PROOF and the customer has been emailed.` });
+      await loadDetail();
+      onOrderChanged?.();
+    } catch (err: unknown) {
+      setProofMessage({ ok: false, text: err instanceof Error ? err.message : "Could not issue the revised proof." });
+    } finally {
+      setIsIssuingProof(false);
+    }
+  };
 
   return (
     <div
@@ -119,6 +148,27 @@ export function OrderDetailPanel({ initialOrder, onClose }: OrderDetailPanelProp
               Approved version:{" "}
               <span className="font-semibold">{order.approved_proof_version ? `v${order.approved_proof_version}` : "none yet"}</span>
             </div>
+            {/* Revised proofs are issued while the order is at ARTWORK (e.g. after a change request). */}
+            {order.pipeline_stage === "ARTWORK" && order.draft_id && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={handleIssueRevisedProof}
+                  disabled={isIssuingProof}
+                  data-testid="issue-revised-proof"
+                >
+                  {isIssuingProof ? "Issuing…" : "Issue revised proof"}
+                </Button>
+                <span className="text-[11px] text-neutral-500">Creates the next version from the current artwork and sends it to the customer.</span>
+              </div>
+            )}
+            {proofMessage && (
+              <div role={proofMessage.ok ? "status" : "alert"} className={`mt-2 text-xs ${proofMessage.ok ? "text-emerald-700" : "text-red-700"}`}>
+                {proofMessage.text}
+              </div>
+            )}
             <div className="mt-2 space-y-1.5" data-testid="proof-log">
               {(order.proofLog || []).length === 0 && (
                 <div className="text-xs text-neutral-500">No proofs issued yet.</div>
