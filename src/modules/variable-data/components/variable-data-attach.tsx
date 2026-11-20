@@ -23,7 +23,7 @@ export function VariableDataAttach({ productSlug, quantity, sampleHeaders = [], 
     { kind: "idle" } | { kind: "busy" } | { kind: "ok"; rows: number; headers: string[] } | { kind: "error"; message: string }
   >({ kind: "idle" });
 
-  // A list brought over from the Bulk Names & Numbers page, waiting to be attached.
+  // A list brought over from the Variable Data Printing page, waiting to be attached.
   const [pending, setPending] = useState<PendingList | null>(null);
   useEffect(() => setPending(loadPendingList(productSlug)), [productSlug]);
 
@@ -62,7 +62,7 @@ export function VariableDataAttach({ productSlug, quantity, sampleHeaders = [], 
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <FileSpreadsheet className="w-4 h-4 text-brand-500" aria-hidden="true" />
-          Names & numbers (spreadsheet)
+          Variable data (your list)
         </CardTitle>
         <CardDescription>
           One row per item ({quantity} rows for this job). Use column names in text, e.g.{" "}

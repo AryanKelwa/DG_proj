@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { savePendingList } from "@/modules/variable-data/pending-list";
 
 /**
- * Bulk Names & Numbers: the customer checks their list here, picks a product and
+ * Variable Data Printing (VDP): the customer checks their list here, picks a product and
  * goes to the designer with the list ready to attach. The real order (price,
  * proof, payment, one print file per row) happens through the designer, so this
  * page never creates files or orders on its own.

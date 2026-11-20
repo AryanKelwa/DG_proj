@@ -1,5 +1,5 @@
 /**
- * Hands a names-and-numbers list from the Bulk Names & Numbers page to the
+ * Hands a names-and-numbers list from the Variable Data Printing page to the
  * designer. Kept in sessionStorage (this tab only, cleared when the tab closes);
  * nothing is stored on the server until the customer attaches it to their job.
  */
