@@ -57,7 +57,9 @@ export function DesignerPageView({
   quantity,
 }: DesignerPageViewProps) {
   const router = useRouter();
-  const [effectiveDraftId, setEffectiveDraftId] = useState<string>(draftId || "");
+  // The id is also kept in a ref: state updates are not visible to handlers that
+  // run in the same tick (e.g. upload → open proof), which used to create a second, empty job.
+  const draftIdRef = useRef<string>(draftId || "");
   const [currentProofVersion, setCurrentProofVersion] = useState<number>(1);
   const [isApproving, setIsApproving] = useState<boolean>(false);
   const savedCanvas = initialDesign && Array.isArray((initialDesign as { elements?: unknown }).elements)
@@ -117,6 +119,8 @@ export function DesignerPageView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [proofModalOpen, setProofModalOpen] = useState<boolean>(false);
   const [proofDataUrl, setProofDataUrl] = useState<string | null>(null);
+  const [artworkPreview, setArtworkPreview] = useState<string | null>(null);
+  const [proofError, setProofError] = useState<string | null>(null);
   const [savedJsonNotice, setSavedJsonNotice] = useState<string | null>(null);
 
   // Compute print pixel bounds
@@ -264,7 +268,7 @@ export function DesignerPageView({
 
   // Creates the job draft the first time it is needed (no draft is created just by viewing).
   const ensureDraftId = async (): Promise<string> => {
-    if (effectiveDraftId) return effectiveDraftId;
+    if (draftIdRef.current) return draftIdRef.current;
     const res = await fetch("/api/drafts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -278,57 +282,40 @@ export function DesignerPageView({
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not start the job.");
-    setEffectiveDraftId(data.draft.id);
+    draftIdRef.current = data.draft.id;
     window.history.replaceState(null, "", `?draft=${data.draft.id}`);
     return data.draft.id as string;
   };
 
-  // Real-Time Proof Preview Generation (§ 06 & § 08)
+  // Proof preview (§ 06, § 08): the server renders and stores the proof from the saved
+  // artwork; the modal shows that stored proof, so what is approved is what is printed.
   const handleOpenProofModal = async () => {
-    let uri: string | null = null;
-    if (stageRef.current) {
-      const stage = stageRef.current;
-      // Issue 2: Guides belong in editor only. Temporarily hide guides layer before capture
-      const guidesLayer = stage.findOne(".guides-overlay-layer") || stage.getLayers()[1];
-      const wasVisible = guidesLayer ? guidesLayer.visible() : true;
-      if (guidesLayer) {
-        guidesLayer.visible(false);
-        stage.batchDraw();
-      }
-      try {
-        uri = stage.toDataURL({ pixelRatio: 2 });
-      } catch (err) {
-        console.warn("Stage toDataURL fallback:", err);
-      } finally {
-        if (guidesLayer && wasVisible) {
-          guidesLayer.visible(true);
-          stage.batchDraw();
-        }
-      }
-    }
-    if (!uri) {
-      uri = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><rect width='400' height='400' fill='%23ffffff'/><text x='60' y='200' font-family='sans-serif' font-size='22' font-weight='bold' fill='%23111827'>W2P PROOF PREVIEW</text></svg>";
-    }
-    setProofDataUrl(uri);
+    setProofDataUrl(null);
+    setArtworkPreview(null);
+    setProofError(null);
     setProofModalOpen(true);
-
-    {
-      try {
-        const draftIdForProof = await ensureDraftId();
-        await fetch(`/api/drafts/${draftIdForProof}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            updates: {
-              status: "proof_pending",
-              ...(mode === "designer" ? { designJson: serializeCanvasState() } : {}),
-            },
-            action: "PROOF_GENERATED",
-          }),
-        });
-      } catch (e) {
-        console.error("Draft update error:", e);
-      }
+    try {
+      const id = await ensureDraftId();
+      const patch = await fetch(`/api/drafts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          updates: {
+            status: "proof_pending",
+            ...(mode === "designer" ? { designJson: serializeCanvasState() } : {}),
+          },
+          action: "PROOF_GENERATED",
+        }),
+      });
+      const data = await patch.json();
+      if (!patch.ok) throw new Error(data.error || "The proof could not be generated.");
+      const draft = data.draft as { proofVersion: number; proofs: Array<{ version: number; renderedUrl: string }>; artworkUrl?: string | null; designJson?: { kind?: string } | null };
+      const proof = draft.proofs.find((pr) => pr.version === draft.proofVersion) ?? draft.proofs[draft.proofs.length - 1];
+      setCurrentProofVersion(draft.proofVersion);
+      setProofDataUrl(proof?.renderedUrl || null);
+      if (draft.artworkUrl && draft.designJson?.kind === "pdf") setArtworkPreview(draft.artworkUrl);
+    } catch (e) {
+      setProofError(e instanceof Error ? e.message : "The proof could not be generated.");
     }
   };
 
@@ -374,9 +361,9 @@ export function DesignerPageView({
   };
 
   const handleRequestChanges = async () => {
-    if (effectiveDraftId) {
+    if (draftIdRef.current) {
       try {
-        const res = await fetch(`/api/drafts/${effectiveDraftId}/request-changes`, {
+        const res = await fetch(`/api/drafts/${draftIdRef.current}/request-changes`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -584,7 +571,7 @@ export function DesignerPageView({
       )}
 
       {/* REAL-TIME PROOF PREVIEW MODAL (§ 06 & § 08) */}
-      {proofModalOpen && proofDataUrl && (
+      {proofModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in overflow-y-auto">
           <div className="bg-card border max-w-2xl w-full rounded-2xl shadow-elevation overflow-hidden my-auto max-h-[92vh] flex flex-col">
             <div className="p-4 sm:p-6 border-b flex items-center justify-between shrink-0">
@@ -607,17 +594,22 @@ export function DesignerPageView({
             <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
               {/* Proof Canvas with Watermark */}
               <div className="relative rounded-xl overflow-hidden border bg-industrial-950 flex justify-center items-center p-3 sm:p-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={proofDataUrl}
-                  alt="Proof Preview"
-                  className="max-h-56 sm:max-h-80 object-contain rounded shadow"
-                />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <span className="text-white/20 text-2xl sm:text-3xl font-mono font-extrabold uppercase tracking-widest rotate-[-15deg]">
-                    W2P PROOF · v{currentProofVersion}
-                  </span>
-                </div>
+                {proofError ? (
+                  <p role="alert" className="text-sm text-red-600 py-10">{proofError}</p>
+                ) : !proofDataUrl ? (
+                  <p role="status" className="text-sm text-muted-foreground py-10 animate-pulse">Rendering your proof…</p>
+                ) : artworkPreview ? (
+                  <div className="w-full space-y-2">
+                    <object data={artworkPreview} type="application/pdf" className="w-full h-72 sm:h-96 rounded bg-white" aria-label="Uploaded artwork">
+                      <a href={artworkPreview} target="_blank" rel="noreferrer" className="underline text-sm">Open the uploaded PDF</a>
+                    </object>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={proofDataUrl} alt={`Proof v${currentProofVersion} details`} className="w-full max-h-40 object-contain rounded" />
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={proofDataUrl} alt={`Proof v${currentProofVersion}`} className="max-h-72 sm:max-h-96 object-contain rounded shadow" data-testid="proof-image" />
+                )}
               </div>
 
               <div className="p-3 sm:p-4 rounded-lg bg-secondary/50 border text-xs font-mono space-y-1">
@@ -641,7 +633,7 @@ export function DesignerPageView({
               <Button
                 size="sm"
                 onClick={handleApproveProof}
-                disabled={isApproving}
+                disabled={isApproving || !proofDataUrl}
                 className="font-semibold text-xs shadow-glow bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 {isApproving ? (
