@@ -418,7 +418,7 @@ export function DesignerPageView({
         <div>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-600 text-xs font-medium">
-              Interactive Studio
+              Designer
             </span>
             <span className="text-xs font-mono text-industrial-400">
               {product.division_slug.toUpperCase()}
@@ -444,7 +444,7 @@ export function DesignerPageView({
             className="text-xs font-mono whitespace-normal h-auto min-h-9 py-2 leading-tight"
           >
             <Palette className="w-3.5 h-3.5 mr-1.5" />
-            In-Browser Canvas
+            Design online
           </Button>
           <Button
             size="sm"

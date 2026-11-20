@@ -67,14 +67,14 @@ export function ProofReviewDialog({
           <div>
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-600 text-xs font-medium">
-                Digital Proofing
+                Proof
               </span>
               <span className="text-xs font-mono text-industrial-400">
                 REVISION v{proof.version}
               </span>
             </div>
             <h2 className="text-xl font-bold font-heading mt-1">
-              Production Artwork Inspection & Approval
+              Review your proof
             </h2>
           </div>
 
@@ -103,7 +103,7 @@ export function ProofReviewDialog({
               </Badge>
               {proof.status === "approved" ? (
                 <Badge variant="success" className="text-xs">
-                  APPROVED FOR MANUFACTURE
+                  APPROVED
                 </Badge>
               ) : proof.status === "superseded" ? (
                 <Badge variant="outline" className="text-xs bg-white/80">
@@ -111,7 +111,7 @@ export function ProofReviewDialog({
                 </Badge>
               ) : proof.status === "changes_requested" ? (
                 <Badge variant="destructive" className="text-xs">
-                  REVISION PENDING
+                  CHANGES REQUESTED
                 </Badge>
               ) : (
                 <Badge variant="warning" className="text-xs animate-pulse">
@@ -130,7 +130,7 @@ export function ProofReviewDialog({
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground block text-[10px]">BLEED OVERPRINT</span>
+              <span className="text-muted-foreground block text-[10px]">EDGE ALLOWANCE</span>
               <span className="font-bold text-red-500">{proof.metadata.bleedMm !== undefined ? `+${proof.metadata.bleedMm}mm` : "—"}</span>
             </div>
             <div>
@@ -156,7 +156,7 @@ export function ProofReviewDialog({
                   <span>Request Artwork Revisions</span>
                 </div>
                 <Label htmlFor="rev-notes" className="text-xs text-muted-foreground">
-                  Specify required adjustments for the pre-press operator (text shifts, color tweaks, font size):
+                  What should we change? For example: move the logo up, change the date.
                 </Label>
                 <textarea
                   id="rev-notes"
@@ -204,14 +204,14 @@ export function ProofReviewDialog({
               <div>
                 <span className="font-bold block flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  Formal Customer Sign-Off Verified
+                  You approved this proof
                 </span>
                 <span className="text-[11px] opacity-80">
                   Approved By: {proof.approvedBy} on {new Date(proof.approvedAt).toLocaleString("en-IN")}
                 </span>
               </div>
               <Badge variant="success" className="text-[10px]">
-                PRODUCTION READY
+                READY TO PRINT
               </Badge>
             </div>
           )}
@@ -225,7 +225,7 @@ export function ProofReviewDialog({
             onClick={onClose}
             className="text-xs font-mono"
           >
-            Close Viewer
+            Close
           </Button>
 
           {proof.status === "pending_review" && viewMode === "inspect" && (

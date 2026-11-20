@@ -196,11 +196,11 @@ export function CustomerDashboardView() {
           <User className="w-7 h-7" />
         </div>
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-600 text-xs font-medium">
-          Customer Portal Access
+          Your account
         </span>
-        <h2 className="text-2xl font-bold font-heading">Sign In to View Customer Portal</h2>
+        <h2 className="text-2xl font-bold font-heading">Sign in to see your orders</h2>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          The customer dashboard is strictly isolated. You must sign in to access your order history, review versioned proofs, and access 1-click reorders.
+          Track your orders, approve proofs and reorder in one click.
         </p>
         <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
           <Button asChild className="w-full sm:w-auto font-semibold text-xs">
@@ -238,10 +238,10 @@ export function CustomerDashboardView() {
           <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <h3 className="font-bold text-base font-heading">
-              Payment Confirmed & Order #{checkoutSuccessOrder} Placed!
+              Thank you! Order {checkoutSuccessOrder} is confirmed
             </h3>
             <p className="text-xs text-muted-foreground leading-relaxed font-sans">
-              Your transactional single-order payment has been processed securely. The job has officially entered the <strong>ORDER</strong> stage in our production pipeline. A GST tax invoice is ready below.
+              Your payment went through and our team will check your artwork next. Your GST invoice is ready below.
             </p>
           </div>
         </div>

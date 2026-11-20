@@ -18,6 +18,7 @@ const PRODUCT_LINKS = [
   { href: "/divisions/stamps", label: "Stamps" },
   { href: "/divisions/trophies", label: "Trophies & Awards" },
   { href: "/divisions/laser-cut", label: "Laser-Cut Work" },
+  { href: "/variable-data", label: "Bulk Names & Numbers" },
   { href: "/calculator", label: "Price Calculator" },
   { href: "/gallery", label: "Gallery" },
 ];

@@ -31,9 +31,9 @@ export function ProofsTab({ proofs, setSelectedProofForReview }: ProofsTabProps)
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-bold font-heading">Digital Proofs & Version Approvals</h2>
+          <h2 className="text-xl font-bold font-heading">Your proofs</h2>
           <p className="text-xs text-muted-foreground">
-            Inspect artwork previews before production unlocks. Every revision is version-controlled.
+            Check each proof before we print. Every version is kept.
           </p>
         </div>
       </div>
@@ -43,7 +43,7 @@ export function ProofsTab({ proofs, setSelectedProofForReview }: ProofsTabProps)
           <FileCheck className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
           <h3 className="font-heading font-bold text-base text-foreground mb-1">No Active Digital Proofs</h3>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-            Artwork proofs requiring sign-off will appear here once an order enters the PROOF stage.
+            Proofs waiting for your approval will appear here.
           </p>
         </Card>
       ) : (

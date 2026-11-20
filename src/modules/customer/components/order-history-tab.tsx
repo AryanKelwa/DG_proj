@@ -63,10 +63,8 @@ export function OrderHistoryTab({ orders, reorderingOrder, handleReorder, onOrde
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold font-heading">Past Orders & Production Pipeline Status</h2>
-        <span className="text-xs font-mono text-muted-foreground">
-          Instant 1-Click re-ordering from approved artwork
-        </span>
+        <h2 className="text-xl font-bold font-heading">Your orders</h2>
+        
       </div>
 
       {notice && (
@@ -121,7 +119,7 @@ export function OrderHistoryTab({ orders, reorderingOrder, handleReorder, onOrde
           <ShoppingBag className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
           <h3 className="font-heading font-bold text-base text-foreground mb-1">No Orders Placed Yet</h3>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto mb-4">
-            Custom print jobs, manufacturing status updates, and downloadable GST tax invoices will appear here once you place an order.
+            Your orders, their progress and GST invoices will appear here once you place one.
           </p>
           <Button asChild size="sm" className="text-xs font-semibold bg-brand-500 hover:bg-brand-600">
             <Link href="/#divisions">Browse Products & Catalog</Link>

@@ -138,52 +138,50 @@ export default async function HomePage() {
             <div className="lg:col-span-7 space-y-4">
               <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-flame-50 text-flame-700 font-mono text-xs font-semibold">
                 <Zap className="w-3.5 h-3.5" />
-                <span>INSTANT FORMULA PRICING ENGINE</span>
+                <span>INSTANT PRICES</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-semibold font-heading tracking-tight text-brand-800">
                 No quote forms, no waiting. Pick a size and see your price instantly.
               </h2>
               <p className="text-muted-foreground text-sm leading-relaxed max-w-xl">
-                Every product calculates dynamically based on millimetric area, material multipliers, and automatic volume discount thresholds starting from 50+ units. Full GST transparency included.
+                Your price updates as you change the size, material and quantity. Bulk discounts start from 50 pieces, and GST is always shown.
               </p>
 
               <div className="flex flex-wrap gap-3 pt-2">
                 <Button asChild variant="cta" className="font-semibold">
                   <Link href="/calculator">
-                    Launch Interactive Calculator
+                    Open the price calculator
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Link>
                 </Button>
                 <Button asChild variant="industrial" className="border-industrial-700">
-                  <Link href="/divisions/race-event-numbers">
-                    Race & Event Numbers (CSV Merge)
-                  </Link>
+                  <Link href="/variable-data">Bulk names &amp; numbers</Link>
                 </Button>
               </div>
             </div>
 
             <div className="lg:col-span-5 bg-brand-800 text-white rounded-2xl p-5 font-mono text-xs space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-brand-600 text-brand-200">
-                <span>FORMULA MATRIX</span>
+                <span>EXAMPLE PRICE</span>
                 <Badge variant="outline" className="text-[10px] text-flame-400 border-flame-400/40">
-                  REAL-TIME
+                  STICKERS
                 </Badge>
               </div>
               <div className="flex justify-between">
-                <span className="text-brand-200">Base Unit Rate:</span>
+                <span className="text-brand-200">Base price:</span>
                 <span className="text-white">₹4.00</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-brand-200">Area (75mm x 75mm):</span>
+                <span className="text-brand-200">Size 75 × 75 mm:</span>
                 <span className="text-white">56.3 cm² (+₹14.06)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-brand-200">Material (Gloss Vinyl):</span>
-                <span className="text-brand-200">1.0x (Standard)</span>
+                <span className="text-brand-200">Gloss vinyl:</span>
+                <span className="text-brand-200">Standard</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-brand-200">Volume Tier (250 units):</span>
-                <span className="text-flame-400">-30% Automated Discount</span>
+                <span className="text-brand-200">250 pieces:</span>
+                <span className="text-flame-400">30% bulk discount</span>
               </div>
               <div className="pt-2 border-t border-brand-600 flex justify-between font-bold text-sm">
                 <span className="text-white">Total (excl. GST):</span>
@@ -198,13 +196,13 @@ export default async function HomePage() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full border-t border-border pt-16">
         <div className="text-center max-w-2xl mx-auto mb-12">
           <Badge variant="outline" className="mb-2 font-mono text-[11px]">
-            THE PRODUCTION ADVANTAGE
+            WHY ORDER FROM US
           </Badge>
           <h2 className="text-3xl font-semibold font-heading tracking-tight text-brand-800">
-            Designed for the Workshop Floor
+            Print without the guesswork
           </h2>
           <p className="text-sm text-muted-foreground mt-2">
-            Why commercial print businesses need more than just an image upload button.
+            From your first idea to the parcel at your door.
           </p>
         </div>
 
@@ -213,9 +211,9 @@ export default async function HomePage() {
             <div className="w-10 h-10 rounded-lg bg-brand-50 dark:bg-brand-950/50 flex items-center justify-center text-brand-500 font-bold">
               <Sliders className="w-5 h-5" />
             </div>
-            <h3 className="font-bold text-base font-heading">Constrained In-Browser Design</h3>
+            <h3 className="font-bold text-base font-heading">Designs that always print right</h3>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Customers design artwork locked inside bleed, trim, and safety zones. Unprintable artwork is physically impossible to submit.
+              Our online designer keeps your text and images inside the print area, so nothing gets cut off.
             </p>
           </div>
 
@@ -223,9 +221,9 @@ export default async function HomePage() {
             <div className="w-10 h-10 rounded-lg bg-flame-50 flex items-center justify-center text-flame-600 font-bold">
               <FileCheck2 className="w-5 h-5" />
             </div>
-            <h3 className="font-bold text-base font-heading">Versioned Proofs & Approval Gate</h3>
+            <h3 className="font-bold text-base font-heading">You approve before we print</h3>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Every revision is logged (v1, v2). High-resolution print files stay strictly locked until the client formally approves the proof.
+              See a proof of exactly what will be printed. Ask for changes as often as you need; nothing is printed until you approve it.
             </p>
           </div>
 
@@ -233,9 +231,9 @@ export default async function HomePage() {
             <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center text-brand-700 font-bold">
               <Cpu className="w-5 h-5" />
             </div>
-            <h3 className="font-bold text-base font-heading">Server-Side 300 DPI & CSV Merge</h3>
+            <h3 className="font-bold text-base font-heading">Names and numbers in bulk</h3>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Automated high-res vector output and row-by-row variable data merges (numbers, athlete names, barcodes) generated server-side.
+              Upload a spreadsheet of names or race numbers and get a personalised bib, board or badge for every row.
             </p>
           </div>
         </div>
